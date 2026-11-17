@@ -1,0 +1,58 @@
+name: Release
+
+# Pushing a tag vX.Y.Z (or running this workflow by hand with a version) builds
+# the launcher with that version and publishes the user build as a GitHub
+# release. The user build checks this repository's latest release on start.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 版本号 X.Y.Z（不带 v），会在当前提交上创建标签 vX.Y.Z
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          $version = if ($env:EVENT -eq 'workflow_dispatch') { $env:INPUT_VERSION.Trim() } else { $env:TAG -replace '^v','' }
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "版本号必须是 X.Y.Z：$version" }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build
+        shell: cmd
+        run: call build.cmd ${{ steps.version.outputs.version }}
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $tag = "v$env:VERSION"
+          $asset = 'dist/user/MomokoLauncher.exe'
+          if (-not (Test-Path $asset)) { throw "构建产物不存在：$asset" }
+          gh release create $tag $asset --target $env:GITHUB_SHA --title "Momoko 启动器 $tag" --generate-notes
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

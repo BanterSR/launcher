@@ -1,0 +1,9 @@
+<Project>
+  <!-- Edition=User (default, NativeAOT) or Edition=Dev (developer features, DEV symbol).
+       Each edition restores and builds into its own obj/bin folders. -->
+  <PropertyGroup>
+    <Edition Condition="'$(Edition)'==''">User</Edition>
+    <BaseIntermediateOutputPath>obj\$(Edition)\</BaseIntermediateOutputPath>
+    <BaseOutputPath>bin\$(Edition)\</BaseOutputPath>
+  </PropertyGroup>
+</Project>

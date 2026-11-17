@@ -1,0 +1,107 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PlatformTarget>x64</PlatformTarget>
+    <RootNamespace>Momoko.Launcher</RootNamespace>
+    <AssemblyName>MomokoLauncher</AssemblyName>
+    <Product>Momoko 启动器</Product>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>assets\launcher.ico</ApplicationIcon>
+    <IsAotCompatible>true</IsAotCompatible>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <DebugType>none</DebugType>
+    <!-- The passport the launcher signs in to; compiled in (BuildInfo.MomokoOrigin). -->
+    <MomokoOrigin Condition="'$(MomokoOrigin)'==''">https://user.alsl.xyz</MomokoOrigin>
+    <!-- Release version X.Y.Z (build.cmd <version>; the release workflow passes the tag).
+         Without it the build is a local build that does not check for updates. -->
+    <Version Condition="'$(Version)'==''">0.0.0-local</Version>
+    <!-- GitHub repository whose latest release the user build checks (BuildInfo.UpdateRepository). -->
+    <UpdateRepository Condition="'$(UpdateRepository)'==''">BanterSR/launcher</UpdateRepository>
+  </PropertyGroup>
+
+  <!-- User build: NativeAOT, optimised for size. -->
+  <PropertyGroup Condition="'$(Edition)'=='User'">
+    <PublishAot>true</PublishAot>
+    <OptimizationPreference>Size</OptimizationPreference>
+    <StackTraceSupport>true</StackTraceSupport>
+  </PropertyGroup>
+  <!-- The ILCompiler pack the SDK knows (10.0.12) has advisory GHSA-p3jp-9v83-76w9;
+       compile against the patched runtime and ILCompiler packs. -->
+  <PropertyGroup Condition="'$(Edition)'=='User'">
+    <RuntimeFrameworkVersion>10.0.15</RuntimeFrameworkVersion>
+  </PropertyGroup>
+  <Target Name="UsePatchedILCompiler" BeforeTargets="ProcessFrameworkReferences" Condition="'$(Edition)'=='User'">
+    <ItemGroup>
+      <KnownILCompilerPack Condition="'%(KnownILCompilerPack.TargetFramework)'=='net10.0'">
+        <ILCompilerPackVersion>10.0.15</ILCompilerPackVersion>
+      </KnownILCompilerPack>
+    </ItemGroup>
+  </Target>
+
+  <!-- WebView2LoaderStatic.lib is linked into the NativeAOT executable. -->
+  <ItemGroup Condition="'$(Edition)'=='User'">
+    <DirectPInvoke Include="WebView2Loader" />
+    <NativeLibrary Include="$(PkgMicrosoft_Web_WebView2)\build\native\x64\WebView2LoaderStatic.lib" />
+  </ItemGroup>
+
+  <!-- Developer build: DEV symbol, framework-dependent single file with WebView2Loader.dll bundled. -->
+  <PropertyGroup Condition="'$(Edition)'=='Dev'">
+    <DefineConstants>$(DefineConstants);DEV</DefineConstants>
+    <AssemblyName>MomokoLauncher.Dev</AssemblyName>
+    <SelfContained>false</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="games\**;dist\**;ui\**;bin\**;obj\**" />
+    <None Remove="games\**;dist\**" />
+    <!-- Only the WebView2 loader is used; the COM interfaces are declared in src/Host/WebView2.cs. -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" ExcludeAssets="all" PrivateAssets="all" GeneratePathProperty="true" />
+  </ItemGroup>
+
+  <!-- Everything the launcher needs at run time is inside the executable:
+       the page (ui/), the gakumas version.dll hook and the license notices.
+       HostWindow serves ui/ to WebView2 from these resources; game icons and
+       backgrounds come from the Momoko launcher settings. -->
+  <ItemGroup>
+    <EmbeddedResource Include="ui\*.*" LogicalName="ui/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="THIRD_PARTY.md" LogicalName="ui/THIRD_PARTY.md" />
+    <EmbeddedResource Include="games\gakumas\native\bin\version.dll" LogicalName="games/gakumas/version.dll" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(Edition)'=='Dev'">
+    <EmbeddedResource Include="ui\dev\*.*" LogicalName="ui/dev/%(Filename)%(Extension)" />
+    <None Include="$(PkgMicrosoft_Web_WebView2)\runtimes\win-x64\native\WebView2Loader.dll" Link="WebView2Loader.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Target Name="WriteBuildInfo" BeforeTargets="CoreCompile">
+    <PropertyGroup>
+      <BuildInfoFile>$(IntermediateOutputPath)BuildInfo.g.cs</BuildInfoFile>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(BuildInfoFile)" Overwrite="true" WriteOnlyWhenDifferent="true"
+      Lines="namespace Momoko.Launcher.Core%3B;internal static class BuildInfo{public const string MomokoOrigin=&quot;$(MomokoOrigin)&quot;%3Bpublic const string Version=&quot;$(Version)&quot;%3Bpublic const string UpdateRepository=&quot;$(UpdateRepository)&quot;%3B}" />
+    <ItemGroup>
+      <Compile Include="$(BuildInfoFile)" />
+      <FileWrites Include="$(BuildInfoFile)" />
+    </ItemGroup>
+  </Target>
+
+  <!-- The gakumas version.dll hook is C++; rebuilt when its sources change.
+       Needs the MSVC x64 environment (vcvars64 / setup_x64) or SkipNativeBuild=true. -->
+  <Target Name="BuildGakumasHook" BeforeTargets="PrepareForBuild" Condition="'$(SkipNativeBuild)'!='true'"
+          Inputs="@(GakumasHookSource)" Outputs="games\gakumas\native\bin\version.dll">
+    <Exec Command="&quot;$(MSBuildProjectDirectory)\games\gakumas\native\build.cmd&quot;" WorkingDirectory="$(MSBuildProjectDirectory)\games\gakumas\native" />
+  </Target>
+  <ItemGroup>
+    <GakumasHookSource Include="games\gakumas\native\src\**\*;games\gakumas\native\include\**\*;games\gakumas\native\version.def;games\gakumas\native\build.cmd" />
+  </ItemGroup>
+</Project>

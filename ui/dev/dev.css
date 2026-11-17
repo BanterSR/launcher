@@ -1,0 +1,39 @@
+/* Developer build panels. Blue marks features that exist only in this build. */
+.dev-panel{app-region:no-drag;-webkit-app-region:no-drag}
+.dev-log{position:absolute;left:116px;bottom:44px;z-index:30;width:640px;height:316px;display:flex;flex-direction:column;overflow:hidden;border-radius:20px;
+  background:var(--panel);backdrop-filter:blur(24px) saturate(150%);border:1px solid var(--border);box-shadow:var(--card-shadow),var(--hi)}
+.dev-log-head{height:46px;flex:none;display:flex;align-items:center;gap:10px;padding:0 10px 0 18px}
+.dev-log-head h2{margin:0;font-size:13px;font-weight:700}
+.dev-log-head .mono,.dev-log-foot .mono{font-family:var(--font-mono);font-size:11px;color:var(--text3)}
+.grow{flex:1}
+.btn.small{height:28px;padding:0 12px;border-radius:14px;font-size:12px}
+.dev-log-slot{flex:1;min-height:0;margin:0 8px;border-radius:12px;background:var(--well);overflow:hidden}
+.dev-log-lines{height:100%;overflow-y:auto;padding:8px 10px;font-family:var(--font-mono);font-size:11.5px;line-height:1.6;-webkit-user-select:text;user-select:text}
+.dev-line{display:grid;grid-template-columns:58px minmax(0,1fr);gap:10px}
+.dev-line .time{color:var(--text3)}
+.dev-line .text{word-break:break-all;white-space:pre-wrap;color:var(--text2)}
+.dev-line.ok .text{color:var(--ok)}
+.dev-line.warn .text{color:var(--warn)}
+.dev-line.error .text{color:var(--danger)}
+.dev-log-foot{height:36px;flex:none;display:flex;align-items:center;gap:14px;padding:0 18px;font-size:11.5px;color:var(--text2)}
+.dev-log-foot .state{display:flex;align-items:center;gap:7px;color:var(--text)}
+
+.card.dev-panel{gap:10px}
+.dev-card-head{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--text3)}
+.dev-card-head b{font-weight:700;color:var(--dev-text)}
+.dev-link{color:var(--dev-text);font-size:12px}
+.dev-link:hover{color:var(--dev-text);text-decoration:underline}
+.dev-endpoints{display:grid;grid-template-columns:32px minmax(0,1fr);row-gap:2px;column-gap:8px;padding:10px 12px;border-radius:12px;background:var(--well);
+  font-family:var(--font-mono);font-size:11.5px;line-height:1.6}
+.dev-endpoints .k{color:var(--text3)}
+.dev-endpoints .v{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;-webkit-user-select:text;user-select:text}
+.dev-endpoints .v.changed{color:var(--dev-text)}
+.dev-switch{display:flex;align-items:center;justify-content:space-between;min-height:34px;font-size:13px;cursor:pointer}
+.dev-switch .switch{width:42px;height:26px}
+.dev-switch .switch .track::after{width:20px;height:20px}
+.dev-switch .switch input:checked+.track::after{transform:translateX(16px)}
+
+.dev-note{margin:0 4px;font-size:11.5px;line-height:1.6;color:var(--text3)}
+.dev-credentials{margin-top:8px}
+.dev-credentials .item.input-row .btn{height:32px}
+.sheet.wide .item.input-row label{width:70px}

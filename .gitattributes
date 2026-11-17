@@ -1,0 +1,8 @@
+* text=auto
+# cmd.exe needs CRLF batch files (labels and goto misbehave with LF).
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.webp binary
+*.ico binary
+*.zip binary
+*.dll binary

@@ -1,0 +1,15 @@
+# Build output
+bin/
+obj/
+dist/
+games/gakumas/native/bin/
+games/gakumas/native/build/
+
+# Run-time files written next to the executable
+data/
+log/
+
+# IDE
+.vs/
+.idea/
+*.user

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; font-src 'self'; connect-src 'self'">
+<title>Momoko 启动器</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div id="app">
+  <div id="stage" class="stage"></div>
+  <div class="titlebar" id="titlebar"></div>
+  <div class="window-controls">
+    <button type="button" class="ctl" data-send="window.minimize" aria-label="最小化"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
+    <button type="button" class="ctl" data-send="window.close" aria-label="关闭启动器"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+  <div id="overlay"></div>
+  <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+  <div class="frame" aria-hidden="true"></div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
