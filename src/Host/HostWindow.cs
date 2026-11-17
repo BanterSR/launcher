@@ -6,7 +6,8 @@ namespace Momoko.Launcher.Host;
 // and Windows 11 rounded corners) filled by one WebView2. The page is embedded
 // in the executable and served from memory through WebResourceRequested:
 // https://ui.momoko.example/<path> is resource "ui/<path>". Game icons and
-// backgrounds are https images named by the Momoko launcher settings.
+// backgrounds are cached files under https://media.momoko.example/ (a WebView2
+// virtual host mapped to data\media).
 internal sealed unsafe class HostWindow
 {
     public static readonly string ClassName=App.LauncherApp.Developer?"MomokoLauncherDevWindow":"MomokoLauncherWindow";
@@ -147,6 +148,12 @@ internal sealed unsafe class HostWindow
         if(settings is ICoreWebView2Settings6 settings6)settings6.put_IsSwipeNavigationEnabled(0);
         if(settings is ICoreWebView2Settings9 settings9)settings9.put_IsNonClientRegionSupportEnabled(1);
         view.AddWebResourceRequestedFilter($"https://{UiHost}/*",WebView2Loader.WebResourceContextAll);
+        // Cached game icons and backgrounds (Services.MediaCache).
+        if(view is ICoreWebView2_3 view3)
+        {
+            Directory.CreateDirectory(Core.AppPaths.Media);
+            view3.SetVirtualHostNameToFolderMapping(Services.MediaCache.Host,Core.AppPaths.Media,WebView2Loader.HostResourceAccessAllow);
+        }
         view.add_WebResourceRequested(new WebResourceRequestedHandler(ServeEmbedded),out _);
         view.add_WebMessageReceived(new WebMessageReceivedHandler(json=>MessageReceived?.Invoke(json)),out _);
         view.add_NewWindowRequested(new NewWindowRequestedHandler(OpenExternal),out _);

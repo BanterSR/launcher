@@ -38,12 +38,6 @@ internal sealed class MomokoClient:IDisposable
     public Task<MomokoMe> MeAsync(string accessToken,CancellationToken cancellation)
         =>SendAsync<MomokoEmpty,MomokoMe>("GET","/api/v1/me",accessToken,null,null,LauncherJson.Default.MomokoEnvelopeMomokoMe,cancellation);
 
-    // Launcher display settings: notice and per-game name, wordmark, icon and
-    // backgrounds (docs/login-protocol.md section 3.1). Public, read before login.
-    public Task<MomokoLauncherConfig> LauncherConfigAsync(CancellationToken cancellation)
-        =>SendAsync<MomokoEmpty,MomokoLauncherConfig>("GET","/api/v1/launcher",null,null,null,
-            LauncherJson.Default.MomokoEnvelopeMomokoLauncherConfig,cancellation);
-
     // Launch targets are addressed by client app ID (docs/login-protocol.md sections 2-5).
     public Task<MomokoLaunchApps> AppsAsync(string accessToken,CancellationToken cancellation)
         =>SendAsync<MomokoEmpty,MomokoLaunchApps>("GET","/api/v1/launch/apps",accessToken,null,null,
@@ -155,12 +149,10 @@ internal sealed record MomokoMe(string Id,string Username,string? Name,string? E
 internal sealed record MomokoServerBrief(string Id,string Game,string? GameName,string Name,string? State,int Online,string? Theme,string? Cover);
 internal sealed record MomokoLink(string Id,string PlayerId,string? DisplayId,string? Account,string? Nickname,int Level,string? Method);
 internal sealed record MomokoEndpoints(string Sdk,string Game,string Resource);
-// Icon: the square image of the server's card in Momoko (its cover), an
-// absolute https URL; empty when Momoko cannot provide it.
-internal sealed record MomokoLaunchApp(string AppId,MomokoServerBrief Server,MomokoEndpoints Endpoints,MomokoLink? Link,bool Bindable,string? BlockReason,string? Icon);
+// Icon and Background: links (object storage) of the game icon and the game
+// page background (image or video) uploaded for this server; empty when not set.
+internal sealed record MomokoLaunchApp(string AppId,MomokoServerBrief Server,MomokoEndpoints Endpoints,MomokoLink? Link,bool Bindable,string? BlockReason,
+    string? Icon,string? Background);
 internal sealed record MomokoLaunchApps(MomokoLaunchApp[] Apps);
 internal sealed record MomokoLaunchBindRequest(string Account,string Password);
 internal sealed record MomokoTicket(string Ticket,long ExpiresIn,string PlayerId,string? DisplayId);
-internal sealed record MomokoLauncherConfig(string? Notice,MomokoLauncherGame[]? Games);
-// Backgrounds are absolute https URLs, in display order.
-internal sealed record MomokoLauncherGame(string Game,string Name,string? Wordmark,string[]? Backgrounds);

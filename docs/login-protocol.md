@@ -103,12 +103,13 @@
   "link": PassportLink | null,
   "bindable": true,
   "blockReason": "",
-  "icon": "https://..."
+  "icon": "https://...",
+  "background": "https://..."
 }
 ```
 
 - **endpoints：**服务器的客户端地址。`resource` 为空时客户端使用官方资源。
-- **icon：**服务器图标，与 Momoko 里这台服务器卡片上的图是同一张卡：服务器封面（没设封面时是 Momoko 按服务器 ID 挑的默认封面）的方图。绝对地址 `{momoko}/games/...`；Momoko 没有这张素材或没配置 `passport.public_url` 时为空。
+- **icon、background：**启动器里的游戏图标和游戏页背景（图片，背景也可以是 mp4 / webm 视频）。管理员在 Momoko 服务器的「接入设置 → 客户端」里上传，文件放在 Momoko 配置的对象存储（系统设置 · 储存）里，这里是公开链接；没有上传时为空。换文件后链接随之改变。
 - **link：**当前通行证在这台服务器上生效的绑定；`null` 表示还没有游戏账号。
 - **bindable / blockReason：**没有绑定时，能否绑定或新建。`blockReason` 取值：
   - `unsupported`：服务器不支持；
@@ -132,25 +133,6 @@
 
 - 服务器对玩家不可见、也没有绑定时，照常返回，`bindable=false`，`blockReason=not_visible`。
 - 应用 ID 不存在，或对应服务器不可启动：404 `PASSPORT_APP_NOT_FOUND`。
-
-### 3.1 启动器设置 `GET /api/v1/launcher`
-
-不需要登录，PC 启动器在登录前读取。内容由管理员在 Momoko 后台「用户通行证 → 启动器」里设置，存在系统配置 `passport.launcher`。
-
-```json
-{
-  "notice": "启动器公告，空为不显示",
-  "games": [
-    {"game": "gakumas", "name": "学园偶像大师", "wordmark": "GAKUMAS", "backgrounds": ["https://..."]}
-  ]
-}
-```
-
-- **games：**按游戏 id（Momoko 游戏适配器 id）一条，顺序同设置。启动器只使用自己有模块的游戏；没有设置的游戏显示游戏 id，没有背景。
-- **name：**必填，最多 40 字。**wordmark：**标题上方的字标，可以为空。
-- **backgrounds：**0–3 张，按顺序显示：1 张铺满游戏页，2–3 张并排。管理员从 Momoko 的游戏素材里选（登录插画、偶像卡横图、偶像卡原画），返回绝对地址 `{momoko}/games/...`；没配置 `passport.public_url` 时不返回。
-- **notice：**最多 500 字，显示在启动器的登录页和游戏页。
-- 服务器图标不在这里，见第 3 节的 `icon`。
 
 ## 4. 游戏账号（Momoko）
 

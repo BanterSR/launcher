@@ -138,12 +138,9 @@ img{-webkit-user-drag:none}
 
 /* ---------- game page ---------- */
 .art{position:absolute;inset:0;overflow:hidden;background:var(--art-bg)}
-.art img{position:absolute;top:0;width:38.36%;height:100%;object-fit:cover;object-position:50% 14%;opacity:0;transition:opacity .35s}
+.art img,.art video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.art img{opacity:0;transition:opacity .35s}
 .art img.loaded{opacity:1}
-.art img:nth-child(1){left:0;clip-path:polygon(0 0,100% 0,calc(100% - 96px) 100%,0 100%)}
-.art img:nth-child(2){left:30.86%;clip-path:polygon(100px 0,100% 0,calc(100% - 96px) 100%,4px 100%)}
-.art img:nth-child(3){left:61.72%;width:38.36%;clip-path:polygon(100px 0,100% 0,100% 100%,4px 100%)}
-.art.single img{left:0;width:100%;clip-path:none;object-position:50% 30%}
 .art .scrim-b{position:absolute;inset:0;background:var(--scrim-b)}
 .art .scrim-l{position:absolute;inset:0;background:var(--scrim-l)}
 .stage.dim{filter:var(--dim-filter);transform:scale(1.04)}
@@ -154,16 +151,12 @@ img{-webkit-user-drag:none}
 .rail .mark svg{width:19px;height:19px;fill:currentColor}
 .rail .sep{width:24px;height:1px;margin:2px 0;background:var(--sep)}
 .rail .games{display:flex;flex-direction:column;align-items:center;gap:14px;overflow-y:auto;scrollbar-width:none;padding:4px 0}
-.rail .game{position:relative;width:46px;height:46px;flex:none;padding:0;border:0;border-radius:14px;overflow:visible;background:var(--avatar-bg);
-  outline:2px solid transparent;outline-offset:3px;transition:outline-color .12s,transform .12s}
+.rail .game{position:relative;width:46px;height:46px;flex:none;padding:0;border:0;border-radius:14px;overflow:hidden;background:var(--avatar-bg);
+  opacity:.5;transition:opacity .12s}
 .rail .game img{width:100%;height:100%;border-radius:14px;object-fit:cover;object-position:50% 8%}
 .rail .game .initial{width:100%;height:100%;border-radius:14px;display:flex;align-items:center;justify-content:center;
   font-family:var(--font-mark);font-size:18px;font-weight:700;color:var(--avatar-text)}
-.announcement{width:322px;margin:0;padding:12px 16px;border-radius:14px;background:var(--panel);backdrop-filter:blur(24px) saturate(150%);
-  border-left:3px solid var(--accent);font-size:12.5px;line-height:1.7;color:var(--text2);white-space:pre-line;-webkit-user-select:text;user-select:text}
-.passport .announcement{width:100%;margin-top:18px}
-.rail .game:hover{transform:translateY(-1px)}
-.rail .game[aria-current=page]{outline-color:var(--ring)}
+.rail .game:hover,.rail .game[aria-current=page]{opacity:1}
 .rail .fill{flex:1}
 .rail .icon{width:40px;height:40px;border:0;border-radius:20px;background:none;color:var(--rail-icon);display:flex;align-items:center;justify-content:center}
 .rail .icon:hover{background:var(--btn)}
@@ -229,7 +222,8 @@ img{-webkit-user-drag:none}
 .scrim.dim-overlay{background:var(--dim-overlay)}
 .scrim.modal{background:var(--backdrop);backdrop-filter:blur(6px)}
 .sheet{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;overflow:hidden;border-radius:24px;
-  background:var(--sheet);backdrop-filter:blur(30px) saturate(150%);border:1px solid var(--border);box-shadow:var(--sheet-shadow),var(--hi);animation:pop .16s ease-out}
+  background:var(--sheet);backdrop-filter:blur(30px) saturate(150%);border:1px solid var(--border);box-shadow:var(--sheet-shadow),var(--hi)}
+.sheet.enter{animation:pop .16s ease-out}
 @keyframes pop{from{opacity:0;transform:translate(-50%,-48%) scale(.98)}}
 .sheet.settings{width:640px;height:560px}
 .sheet.settings.wide{width:860px;height:608px}
@@ -245,7 +239,8 @@ img{-webkit-user-drag:none}
 .seg.full{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border-radius:14px}
 .seg.full button{height:36px;border-radius:11px;font-size:13px}
 .tabs{flex:none;padding:16px 28px 0}
-.sheet .content{flex:1;min-height:0;overflow-y:auto;padding:22px 28px 24px;display:flex;flex-direction:column;gap:22px}
+.sheet .content{flex:1;min-height:0;overflow-y:auto;padding:22px 28px 24px;display:flex;flex-direction:column;gap:22px;
+  scrollbar-width:thin;scrollbar-color:var(--divider) transparent}
 .sheet .columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;align-items:start}
 .sheet .column{display:flex;flex-direction:column;gap:18px}
 .sheet .foot{height:44px;flex:none;display:flex;align-items:center;justify-content:center;border-top:1px solid var(--divider);font-size:12px;color:var(--text3)}

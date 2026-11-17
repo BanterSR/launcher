@@ -23,7 +23,6 @@ namespace Momoko.Launcher.Core;
 [JsonSerializable(typeof(MomokoEnvelope<MomokoLaunchApps>))]
 [JsonSerializable(typeof(MomokoEnvelope<MomokoLink>))]
 [JsonSerializable(typeof(MomokoEnvelope<MomokoTicket>))]
-[JsonSerializable(typeof(MomokoEnvelope<MomokoLauncherConfig>))]
 [JsonSerializable(typeof(MomokoEnvelope<JsonElement>))]
 [JsonSerializable(typeof(MomokoError))]
 [JsonSerializable(typeof(MomokoEmpty))]

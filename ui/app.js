@@ -47,6 +47,8 @@
   // ---------- DOM patching ----------
   // Replaces a region only when its markup changed and keeps what the user is
   // typing: inputs marked data-keep and the focused input survive a re-render.
+  // Scroll containers marked data-scroll="<key>" keep their position when
+  // the same key is rendered again.
   function patch(el, html) {
     if (el._html === html) return false;
     const keep = [];
@@ -56,8 +58,13 @@
       if (input.type !== 'checkbox' && (input.hasAttribute('data-keep') || focused)) keep.push([input.id, input.value]);
       if (focused) focus = [input.id, input.selectionStart, input.selectionEnd];
     });
+    const scrolls = [...el.querySelectorAll('[data-scroll]')].map((node) => [node.dataset.scroll, node.scrollTop]);
     el.innerHTML = html;
     el._html = html;
+    for (const [key, top] of scrolls) {
+      const node = el.querySelector(`[data-scroll="${CSS.escape(key)}"]`);
+      if (node) node.scrollTop = top;
+    }
     for (const [id, value] of keep) {
       const input = el.querySelector('#' + CSS.escape(id));
       if (input) input.value = value;
@@ -114,7 +121,7 @@
   function passportCard() {
     const update = newer();
     const head = `<span class="logo" aria-hidden="true">${icons.spark}</span><h1 class="brand">MOMOKO</h1><p class="brand-sub">游戏启动器</p>${update
-      ? `<div class="links"><button type="button" class="link update-link" data-send="update.open">发现新版本 ${esc(update.latest)}，前往下载</button></div>` : ''}${announcement()}`;
+      ? `<div class="links"><button type="button" class="link update-link" data-send="update.open">发现新版本 ${esc(update.latest)}，前往下载</button></div>` : ''}`;
     const login = state.login || {};
     const busy = !!login.busy;
     const error = `<p class="form-error" role="alert">${esc(login.error || '')}</p>`;
@@ -146,22 +153,23 @@
   }
 
   // ---------- game page ----------
-  // Backgrounds from the Momoko launcher settings: one fills the stage, two or
-  // three sit side by side as slanted panels.
+  // Game page background uploaded for the server in Momoko: an image or a
+  // looping muted video, shown from the launcher's cache.
   function artView(server) {
-    const art = server ? server.art.slice(0, 3) : [];
-    const images = art.map((src) => `<img src="${esc(src)}" alt="">`).join('');
-    return `<div class="art${art.length === 1 ? ' single' : ''}" aria-hidden="true">${images}<div class="scrim-b"></div><div class="scrim-l"></div></div>`;
+    let media = '';
+    if (server && server.background) {
+      media = server.backgroundVideo
+        ? `<video src="${esc(server.background)}" autoplay muted loop playsinline></video>`
+        : `<img src="${esc(server.background)}" alt="">`;
+    }
+    return `<div class="art" aria-hidden="true">${media}<div class="scrim-b"></div><div class="scrim-l"></div></div>`;
   }
 
-  // Server icon from Momoko (the square image of the server's cover); without
-  // one the rail shows the game's initial.
+  // Game icon uploaded for the server in Momoko; without one the rail shows
+  // the game name's first letter.
   const gameIcon = (item) => (item.icon
     ? `<img src="${esc(item.icon)}" alt="">`
     : `<span class="initial">${esc((item.title || item.game || '?').charAt(0).toUpperCase())}</span>`);
-
-  const announcement = () => (state.announcement
-    ? `<p class="announcement" role="note">${esc(state.announcement)}</p>` : '');
 
   function railView(server) {
     const games = (state.servers || []).map((item) => `<button type="button" class="game" data-send="server.select" data-id="${esc(item.id)}"
@@ -187,8 +195,7 @@
           <div class="cta-row"><button type="button" class="btn" data-send="open.account">打开通行证</button><button type="button" class="btn accent" data-send="server.refresh">刷新</button></div></div>`;
     }
     const [tone, label] = serverState(server);
-    const wordmark = server.wordmark ? `<span class="wordmark">${esc(server.wordmark)}</span>` : '';
-    const heading = `<div class="heading">${wordmark}<h1>${esc(server.title)}</h1>
+    const heading = `<div class="heading"><h1>${esc(server.title)}</h1>
       <span class="server"><span class="dot ${tone}" aria-hidden="true"></span>${esc(server.name)}<small>${esc(label)}</small></span></div>`;
     const status = server.status;
     const player = server.player;
@@ -228,7 +235,7 @@
     else cta = `<button type="button" class="cta" data-send="server.launch" data-id="${esc(server.id)}">${icons.play}开始游戏</button>`;
     const extra = ext.stage.map((fn) => fn(server, state)).join('');
     const panel = ext.panel.map((fn) => fn(server, state)).join('');
-    return `${heading}${extra}<div class="actions">${announcement()}${panel}${card}${pill}<div class="cta-row">${cta}
+    return `${heading}${extra}<div class="actions">${panel}${card}${pill}<div class="cta-row">${cta}
       <button type="button" class="round" data-action="ui.settings" data-tab="game" aria-label="游戏设置">${icons.gear}</button></div></div>`;
   }
 
@@ -305,11 +312,11 @@
     } else {
       content = sections.join('');
     }
-    return `<div class="scrim dim-overlay" data-dismiss><div class="sheet settings${ext.wide ? ' wide' : ''}" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    return `<div class="scrim dim-overlay" data-dismiss><div class="sheet settings${ext.wide ? ' wide' : ''}${entering()}" role="dialog" aria-modal="true" aria-labelledby="settings-title">
       <div class="head"><h2 id="settings-title">设置${ext.badge}</h2><span class="grow"></span>
         <button type="button" class="close" data-action="ui.close" aria-label="关闭设置">${icons.close}</button></div>
       <div class="tabs"><div class="seg" role="tablist" aria-label="设置分类">${tabs.join('')}</div></div>
-      <div class="content">${content}</div>
+      <div class="content" data-scroll="settings-${tab}">${content}</div>
       <div class="foot">${esc(ext.foot || '更改会自动保存')}</div></div></div>`;
   }
 
@@ -318,7 +325,7 @@
     const dialog = ui.dialog;
     const server = dialog.id ? (state.servers || []).find((item) => item.id === dialog.id) : null;
     const pending = ui.pending === dialog.kind;
-    const wrap = (body) => `<div class="scrim modal" data-dismiss><div class="sheet dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">${body}</div></div>`;
+    const wrap = (body) => `<div class="scrim modal" data-dismiss><div class="sheet dialog${entering()}" role="dialog" aria-modal="true" aria-labelledby="dialog-title">${body}</div></div>`;
     if (dialog.kind === 'bind' && server) {
       return wrap(`<h2 id="dialog-title">绑定已有游戏账号</h2>
         <p>输入 ${esc(server.name)} 上的游戏账号和密码。绑定后这个游戏账号归属当前通行证。</p>
@@ -350,6 +357,14 @@
   }
 
   // ---------- render ----------
+  // The open animation plays only when a sheet first appears: re-rendering
+  // an open sheet (state updates, typing, check for updates) must not replay
+  // it. The class stays for the length of the animation, then the next render
+  // drops it.
+  let sheetKey = '';
+  let sheetOpenedAt = 0;
+  const entering = () => (performance.now() - sheetOpenedAt < 200 ? ' enter' : '');
+
   function render() {
     if (!state) return;
     applyTheme();
@@ -358,6 +373,8 @@
     if (ui.dialog && ui.dialog.kind !== 'logout' && !ready) ui.dialog = null;
     const server = ready ? current() : null;
     if (ui.dialog && ui.dialog.id && (!server || ui.dialog.id !== server.id || server.player)) { ui.dialog = null; ui.pending = null; }
+    const key = ui.dialog ? 'dialog:' + ui.dialog.kind : ui.settings ? 'settings' : '';
+    if (key !== sheetKey) { sheetKey = key; sheetOpenedAt = key ? performance.now() : 0; }
 
     patch($('art-slot'), ready ? artView(server) : passportBackdrop());
     patch($('rail-slot'), ready ? railView(server) : '');

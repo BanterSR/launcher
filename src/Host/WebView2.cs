@@ -25,6 +25,7 @@ internal static partial class WebView2Loader
 
     public const int MoveFocusProgrammatic=0;
     public const int WebResourceContextAll=0;
+    public const int HostResourceAccessAllow=1;
 }
 
 [GeneratedComInterface(StringMarshalling=StringMarshalling.Utf16)]
@@ -135,6 +136,32 @@ internal partial interface ICoreWebView2
     void RemoveWebResourceRequestedFilter(string uri,int resourceContext);
     void add_WindowCloseRequested(nint handler,out long token);
     void remove_WindowCloseRequested(long token);
+}
+
+[GeneratedComInterface(StringMarshalling=StringMarshalling.Utf16)]
+[Guid("9e8f0cf8-e670-4b5e-b2bc-73e061e3184c")]
+internal partial interface ICoreWebView2_2:ICoreWebView2
+{
+    void add_WebResourceResponseReceived(nint handler,out long token);
+    void remove_WebResourceResponseReceived(long token);
+    void NavigateWithWebResourceRequest(nint request);
+    void add_DOMContentLoaded(nint handler,out long token);
+    void remove_DOMContentLoaded(long token);
+    nint get_CookieManager();
+    nint get_Environment();
+}
+
+// SetVirtualHostNameToFolderMapping serves a local folder under an https host
+// (with range requests, so cached videos play).
+[GeneratedComInterface(StringMarshalling=StringMarshalling.Utf16)]
+[Guid("a0d6df20-3b92-416d-aa0c-437a9c727857")]
+internal partial interface ICoreWebView2_3:ICoreWebView2_2
+{
+    void TrySuspend(nint handler);
+    void Resume();
+    int get_IsSuspended();
+    void SetVirtualHostNameToFolderMapping(string hostName,string folderPath,int accessKind);
+    void ClearVirtualHostNameToFolderMapping(string hostName);
 }
 
 [GeneratedComInterface(StringMarshalling=StringMarshalling.Utf16)]

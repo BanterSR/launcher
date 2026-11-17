@@ -27,6 +27,7 @@ internal sealed partial class LauncherApp
     private readonly MomokoClient momoko;
     private readonly SdkClient sdk=new();
     private readonly UpdateClient updates=new();
+    private readonly MediaCache media=new();
     private readonly GameModule[] modules=[new GakumasGame()];
     private readonly SemaphoreSlim tokenGate=new(1,1);
     private readonly Dictionary<string,GameRun> runs=new(StringComparer.Ordinal);
@@ -41,7 +42,6 @@ internal sealed partial class LauncherApp
     private bool loginBusy;
     private string? loginError;
     private MomokoLaunchApp[] apps=[];
-    private MomokoLauncherConfig? launcherConfig;
     private CancellationTokenSource? operation;
     private bool closing;
     private bool updateStarted;
@@ -168,11 +168,10 @@ internal sealed partial class LauncherApp
     private async Task RestoreAsync()
     {
         phase="starting";notice=null;loginError=null;Publish();
-        var config=LoadLauncherConfigAsync();
         StoredSecret? saved=null;
         try{saved=CredentialStore.Load(CredentialTarget);}
         catch(Exception error){LauncherLog.Error("读取保存的通行证登录失败："+error.Message);}
-        if(saved is null){await config;phase="login";Publish();return;}
+        if(saved is null){phase="login";Publish();return;}
         refreshToken=saved.Secret;
         try
         {
@@ -190,22 +189,7 @@ internal sealed partial class LauncherApp
             LauncherLog.Error(error.Message);
             phase="offline";notice=error.Message;
         }
-        await config;
         Publish();
-    }
-
-    // The launcher notice and each game's name, wordmark and backgrounds are
-    // Momoko launcher settings (public, readable before login); server icons
-    // come with the launch targets. The settings only change what the page
-    // shows, so a failed read keeps the last copy and is logged; a game without
-    // settings shows its id and no background.
-    private async Task LoadLauncherConfigAsync()
-    {
-        try{launcherConfig=await momoko.LauncherConfigAsync(CancellationToken.None);}
-        catch(Exception error) when(error is MomokoException or MomokoUnavailableException)
-        {
-            LauncherLog.Warn("读取 Momoko 启动器设置失败："+error.Message);
-        }
     }
 
     // Browser authorization: Momoko hands out a device code and a user code, the
@@ -343,17 +327,23 @@ internal sealed partial class LauncherApp
             settings.Selected=apps.FirstOrDefault()?.AppId;
         SaveSettings();
         LauncherLog.Write($"可启动的服务器：{apps.Length} 台");
+        SyncMedia();
+    }
+
+    // Game icons and backgrounds are shown from the local cache; links that
+    // are new or changed download in the background and the page updates as
+    // each file arrives (Services.MediaCache).
+    private async void SyncMedia()
+    {
+        var links=apps.SelectMany(app=>new[]{app.Icon,app.Background}).ToArray();
+        try{await media.SyncAsync(links,Publish,CancellationToken.None);}
+        catch(Exception error){Report(error);}
     }
 
     private async Task RefreshServersAsync()
     {
-        var config=LoadLauncherConfigAsync();
-        try{await LoadServersAsync(CancellationToken.None);}
-        finally
-        {
-            await config;
-            Publish();
-        }
+        await LoadServersAsync(CancellationToken.None);
+        Publish();
     }
 
     private async Task LogoutAsync()
@@ -661,7 +651,7 @@ internal sealed partial class LauncherApp
             ?new UiAccount(profile.Name,profile.Username,Initial(profile.Name),profile.Avatar):null;
         var state=new UiState("state",Developer?"dev":"user",settings.Theme,phase,MomokoOrigin,account,
             new UiLogin(loginBusy,authorization?.UserCode,loginError),apps.Select(ServerState).ToArray(),settings.Selected,notice,
-            launcherConfig?.Notice??"",UpdateState(),DeveloperState());
+            UpdateState(),DeveloperState());
         window.Post(JsonSerializer.Serialize(state,LauncherJson.Default.UiState));
     }
 
@@ -684,9 +674,10 @@ internal sealed partial class LauncherApp
                 new UiPackage(package.Source,package.Version,package.Files,package.ImportedAt.ToString("yyyy-MM-dd",CultureInfo.InvariantCulture)));
         }
         var link=server.Link;
-        var display=launcherConfig?.Games?.FirstOrDefault(item=>item.Game==module.Id);
-        return new UiServer(server.AppId,server.Server.Name,module.Id,display?.Name??module.Id,display?.Wordmark??"",
-            server.Icon??"",display?.Backgrounds??[],server.Server.State,server.Server.Online,
+        var background=MediaCache.Local(server.Background);
+        return new UiServer(server.AppId,server.Server.Name,module.Id,
+            string.IsNullOrWhiteSpace(server.Server.GameName)?module.Id:server.Server.GameName!,
+            MediaCache.Local(server.Icon)??"",background??"",MediaCache.IsVideo(background),server.Server.State,server.Server.Online,
             link is null?null:new UiPlayer(link.PlayerId,link.DisplayId??"",link.Nickname??""),
             server.Bindable,server.BlockReason??"",status,new UiExecutable(executable,valid,module.ExecutableName),localization,
             DeveloperEndpointsState(server),DeveloperServerState(server));

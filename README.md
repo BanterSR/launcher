@@ -4,7 +4,7 @@ Windows 多游戏启动器。玩家用 Momoko 通行证登录一次，在左侧�
 
 - 宿主程序：C#（.NET 10），Win32 无边框窗口。
 - 界面：WebView2 渲染的 HTML/CSS（源码在 `ui/`），编译进程序，有浅色、深色和跟随系统三种主题。
-- 发布物只有一个 exe：界面、`version.dll`、许可说明和 WebView2 加载器都在程序里。游戏的名称、图标、背景和启动器公告由 Momoko 下发（见「启动器设置」）。
+- 发布物只有一个 exe：界面、`version.dll`、许可说明和 WebView2 加载器都在程序里。游戏图标和背景由 Momoko 下发（见「游戏图标与背景」）。
 - 登录协议：`docs/login-protocol.md`。
 - 仓库：<https://github.com/BanterSR/launcher>，用户版通过 GitHub Releases 发布。
 
@@ -64,6 +64,7 @@ build.cmd [版本号]
 | --- | --- |
 | `data/settings.json` | 主题、设备 ID、选中的服务器、账号资料缓存、各游戏的程序路径与汉化开关；开发版还有开发设置 |
 | `data/webview2/` | WebView2 用户数据 |
+| `data/media/` | 游戏图标和背景的缓存 |
 | `data/games/<游戏>/` | 游戏运行时数据：待清理标记、导入的汉化包 |
 | `log/` | `launcher.log`、客户端日志 `client-*.log`、Hook 日志 |
 
@@ -85,16 +86,14 @@ build.cmd [版本号]
 3. **注册、找回密码、账号管理：**在系统浏览器中打开通行证网页 `/register`、`/forgot`、`/account`。
 4. **退出登录：**调用 `POST /api/v1/auth/logout`，删除保存的刷新令牌，回到登录页。
 
-## 启动器设置（Momoko 下发）
+## 游戏图标与背景
 
-启动时（以及点击刷新服务器列表时）调用 Momoko 的公开接口 `GET /api/v1/launcher`（`docs/login-protocol.md` 第 3.1 节），不需要登录。内容由管理员在 Momoko 后台“用户通行证 → 启动器”里设置：
-
-- 公告：显示在登录页和游戏页；
-- 每个游戏的名称、字标和游戏页背景。背景从 Momoko 的游戏素材里选，1 张铺满，2–3 张并排。
-
-左侧栏的服务器图标是 `GET /api/v1/launch/apps` 返回的 `icon`：Momoko 里这台服务器卡片上那张卡的方图，在 Momoko 里换服务器封面就会变。
-
-没有设置的游戏显示游戏 ID、没有背景；没有图标的服务器显示首字母。读取设置失败时保留上一次的设置并记日志，不影响登录和启动。
+- `GET /api/v1/launch/apps` 的每个启动目标带 `icon`（游戏图标）和 `background`（游戏页背景，图片或 mp4 / webm 视频）两个链接。管理员在 Momoko 服务器的「接入设置 → 客户端」里上传，文件放在 Momoko 配置的对象存储里。
+- 启动器把链接对应的文件下载到 `data\media\`（文件名是链接的 SHA-256 加原扩展名），页面通过 WebView2 虚拟主机 `https://media.momoko.example/` 显示本地文件。
+  - 链接没变：直接用缓存，不再下载。
+  - 链接变了：下载新文件；每次同步后，不再被任何启动目标使用的旧文件会被删除（正在播放的视频暂时删不掉时，下次刷新再删）。
+  - 每次读取服务器列表（启动、登录、点击刷新）后同步，下载在后台进行，每下完一个文件界面就更新。单个文件最大 200 MB，下载走系统代理。
+- 标题是 Momoko 报告的游戏名称。没有图标的服务器在左侧栏显示游戏名称的首字，没有背景时游戏页只有底色。
 
 ## 服务器列表与游戏账号
 
@@ -162,9 +161,9 @@ build.cmd [版本号]
 
 ## 界面与宿主
 
-界面由宿主推送的一条 `state` 消息整体渲染，用户操作以 `{type, ...}` 消息发回宿主。窗口的标题栏区域、背景立绘和登录背景都可以拖动窗口。
+界面由宿主推送的一条 `state` 消息整体渲染，用户操作以 `{type, ...}` 消息发回宿主。窗口的标题栏区域、游戏页背景和登录背景都可以拖动窗口。
 
-界面是程序的嵌入资源，宿主通过 WebView2 的 `WebResourceRequested` 从内存提供：`https://ui.momoko.example/<路径>` 对应资源 `ui/<路径>`，找不到的返回 404。游戏图标和背景是 Momoko 启动器设置里的 https 图片，页面的 CSP 只允许内置文件、https 和 data 图片。
+界面是程序的嵌入资源，宿主通过 WebView2 的 `WebResourceRequested` 从内存提供：`https://ui.momoko.example/<路径>` 对应资源 `ui/<路径>`，找不到的返回 404。游戏图标和背景从 `https://media.momoko.example/`（映射到 `data\media\` 的虚拟主机）加载；页面的 CSP 只允许内置文件、https 和 data 图片，以及这个主机上的视频。
 
 窗口最小化时隐藏 WebView，还原后再显示；只有窗口处于激活且没有最小化时才把键盘焦点交给 WebView（WebView2 在隐藏时拒绝 `MoveFocus`）。
 

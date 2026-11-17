@@ -13,7 +13,6 @@ internal sealed record UiState(
     UiServer[] Servers,
     string? Selected,
     string? Notice,
-    string Announcement,
     UiUpdate Update,
     UiDeveloper? Developer);
 
@@ -26,17 +25,17 @@ internal sealed record UiAccount(string Name,string Username,string Initial,stri
 // Code: the user code of a browser authorization in progress.
 internal sealed record UiLogin(bool Busy,string? Code,string? Error);
 
-// Icon is the server's image in Momoko (square version of its cover). Title,
-// Wordmark and Art come from the Momoko launcher settings of the game; without
-// settings Title is the game id and Wordmark and Art are empty.
+// Title is the game name Momoko reports for the server (game id when unknown).
+// Icon and Background are the cached files of the links Momoko hands out
+// (https://media.momoko.example/...), empty until downloaded or when not set.
 internal sealed record UiServer(
     string Id,
     string Name,
     string Game,
     string Title,
-    string Wordmark,
     string Icon,
-    string[] Art,
+    string Background,
+    bool BackgroundVideo,
     string? State,
     int Online,
     UiPlayer? Player,
