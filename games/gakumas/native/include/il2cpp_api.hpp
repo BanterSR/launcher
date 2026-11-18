@@ -27,6 +27,9 @@ constexpr int kFieldStatic=0x0010;
 constexpr int kFieldLiteral=0x0040;
 // Il2CppArray: object header (16) + bounds (8) + max_length (8) before elements.
 constexpr std::size_t kArrayDataOffset=32;
+constexpr std::size_t kArrayLengthOffset=24;
+// Il2CppObject: the header a boxed value type carries in front of its fields.
+constexpr std::size_t kObjectHeaderSize=16;
 
 struct Api {
     Domain* (*domain_get)();
@@ -51,6 +54,9 @@ struct Api {
     void (*field_set_value)(Object*,FieldInfo*,void*);
     void (*field_set_value_object)(Object*,FieldInfo*,Object*);
     void (*field_static_get_value)(FieldInfo*,void*);
+    // Instance field offset from the object pointer; for a value type it
+    // counts the boxed object header.
+    std::size_t (*field_get_offset)(FieldInfo*);
     void (*format_exception)(const Exception*,char*,int);
     void (*format_stack_trace)(const Exception*,char*,int);
     void (*raise_exception)(Exception*);

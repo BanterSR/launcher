@@ -30,6 +30,7 @@ bool Api::Bind(HMODULE module) {
         && Load(module,"il2cpp_field_set_value",field_set_value)
         && Load(module,"il2cpp_field_set_value_object",field_set_value_object)
         && Load(module,"il2cpp_field_static_get_value",field_static_get_value)
+        && Load(module,"il2cpp_field_get_offset",field_get_offset)
         && Load(module,"il2cpp_raise_exception",raise_exception)
         && Load(module,"il2cpp_class_get_methods",class_get_methods)
         && Load(module,"il2cpp_method_get_name",method_get_name)

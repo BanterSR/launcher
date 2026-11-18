@@ -448,6 +448,95 @@ void HookUiSetText(unity::Object* self,unity::String* text,const unity::MethodIn
     original_ui_set_text(self,translated?translated:text,method);
 }
 
+// ---------------------------------------------------------------- inline icon placeholders
+
+using HideReplaceTextFunction=void(*)(unity::Object*,unity::Object*,const unity::MethodInfo*);
+HideReplaceTextFunction original_hide_replace_text{};
+unity::FieldInfo* setter_replace_text{};
+unity::FieldInfo* setter_hit_count{};
+unity::FieldInfo* setter_hit_list{};
+unity::FieldInfo* list_items{};
+unity::FieldInfo* list_size{};
+unity::FieldInfo* info_character_count{};
+unity::FieldInfo* info_characters{};
+unity::FieldInfo* info_meshes{};
+std::size_t character_size{},character_code{},character_material{},character_vertex{},character_visible{};
+std::size_t mesh_size{},mesh_colors{};
+constexpr std::int64_t kQuadVertices=4;
+constexpr std::size_t kColorSize=4;
+constexpr std::size_t kColorAlpha=3;
+
+std::size_t ArrayLength(unity::Object* array) {
+    std::uintptr_t length{};
+    std::memcpy(&length,reinterpret_cast<const char*>(array)+unity::kArrayLengthOffset,sizeof(length));
+    return length;
+}
+char* ArrayData(unity::Object* array) {return reinterpret_cast<char*>(array)+unity::kArrayDataOffset;}
+template<typename T> T ReadAt(const char* address) {T value{};std::memcpy(&value,address,sizeof(T));return value;}
+// Offset of a field inside an unboxed struct (an array element).
+std::size_t StructOffset(unity::Class* type,const char* name) {
+    const auto offset=api->field_get_offset(Field(type,name));
+    if(offset<unity::kObjectHeaderSize)throw std::runtime_error(std::string("IL2CPP struct field offset invalid: ")+api->class_get_name(type)+"."+name);
+    return offset-unity::kObjectHeaderSize;
+}
+
+// TextInLineObjectSetter.HideReplaceText makes the placeholder characters that
+// inline icons cover transparent ("○〆" in produce descriptions): for each
+// position UpdatePosition found in the parsed text it clears the alpha of the
+// four vertices at characterInfo[i].vertexIndex in
+// meshInfo[characterInfo[i].materialReferenceIndex].colors32, without checking
+// that the character is one TMP rendered. TMP assigns vertexIndex only to the
+// characters it fills into a mesh, so a position past the rendered characters
+// (cut by the ellipsis, or kept from the text the view showed before) carries
+// the vertex index of an older layout. With the game's single font that index
+// stays inside the one mesh; with the fallback font a text spans several
+// meshes of different sizes and the index leaves the bounds of the mesh the
+// character now belongs to (IndexOutOfRangeException in the render callback).
+// This replacement hides the same vertices for the positions that hold a
+// rendered placeholder character and whose vertices lie inside their mesh.
+void HookHideReplaceText(unity::Object* self,unity::Object* text_info,const unity::MethodInfo*) {
+    if(!self||!text_info)return;
+    std::int32_t hits{};
+    unity::String* placeholder{};
+    unity::Object* list{};
+    api->field_get_value(self,setter_hit_count,&hits);
+    api->field_get_value(self,setter_replace_text,&placeholder);
+    api->field_get_value(self,setter_hit_list,&list);
+    if(hits<=0||!placeholder||!list)return;
+    unity::Object* items{};
+    std::int32_t size{};
+    api->field_get_value(list,list_items,&items);
+    api->field_get_value(list,list_size,&size);
+    std::int32_t rendered{};
+    unity::Object* characters{};
+    unity::Object* meshes{};
+    api->field_get_value(text_info,info_character_count,&rendered);
+    api->field_get_value(text_info,info_characters,&characters);
+    api->field_get_value(text_info,info_meshes,&meshes);
+    if(!items||!characters||!meshes)return;
+    const std::int64_t length=api->string_length(placeholder);
+    const auto units=api->string_chars(placeholder);
+    const auto positions=std::min<std::int64_t>({hits,size,static_cast<std::int64_t>(ArrayLength(items))});
+    const auto character_count=std::min<std::int64_t>(rendered,static_cast<std::int64_t>(ArrayLength(characters)));
+    const auto mesh_count=static_cast<std::int64_t>(ArrayLength(meshes));
+    for(std::int64_t i=0;i<positions;i++) {
+        const std::int64_t start=ReadAt<std::int32_t>(ArrayData(items)+static_cast<std::size_t>(i)*sizeof(std::int32_t));
+        for(std::int64_t offset=0;offset<length;offset++) {
+            const auto index=start+offset;
+            if(index<0||index>=character_count)continue;
+            const auto character=ArrayData(characters)+static_cast<std::size_t>(index)*character_size;
+            if(ReadAt<wchar_t>(character+character_code)!=units[offset]||ReadAt<std::uint8_t>(character+character_visible)==0)continue;
+            const std::int64_t material=ReadAt<std::int32_t>(character+character_material);
+            const std::int64_t vertex=ReadAt<std::int32_t>(character+character_vertex);
+            if(material<0||material>=mesh_count||vertex<0)continue;
+            const auto colors=ReadAt<unity::Object*>(ArrayData(meshes)+static_cast<std::size_t>(material)*mesh_size+mesh_colors);
+            if(!colors||vertex+kQuadVertices>static_cast<std::int64_t>(ArrayLength(colors)))continue;
+            const auto quad=ArrayData(colors)+static_cast<std::size_t>(vertex)*kColorSize;
+            for(std::int64_t corner=0;corner<kQuadVertices;corner++)quad[static_cast<std::size_t>(corner)*kColorSize+kColorAlpha]=0;
+        }
+    }
+}
+
 // ---------------------------------------------------------------- master data
 
 struct FieldMeta {
@@ -837,6 +926,33 @@ void gakumas::PrepareLocalization(unity::Api& unity_api,unity::Domain* unity_dom
         set_fallback_fonts=Method(settings,"set_fallbackFontAssets",{"System.Collections.Generic.List"});
         fallback_list_class=api->class_from_type(api->field_get_type(Field(settings,"m_fallbackFontAssets")));
         if(!fallback_list_class)throw std::runtime_error("TMP_Settings fallback list type unavailable");
+        const auto setter=Class("Campus.Common","TextInLineObjectSetter");
+        const auto hide_replace_text=Method(setter,"HideReplaceText",{"TMPro.TMP_TextInfo"});
+        setter_replace_text=Field(setter,"_replaceText");
+        setter_hit_count=Field(setter,"_hitCount");
+        setter_hit_list=Field(setter,"_hitIndexList");
+        const auto hit_list=api->class_from_type(api->field_get_type(setter_hit_list));
+        if(!hit_list)throw std::runtime_error("TextInLineObjectSetter hit list type unavailable");
+        list_items=Field(hit_list,"_items");
+        list_size=Field(hit_list,"_size");
+        const auto text_info=Class("TMPro","TMP_TextInfo");
+        info_character_count=Field(text_info,"characterCount");
+        info_characters=Field(text_info,"characterInfo");
+        info_meshes=Field(text_info,"meshInfo");
+        const auto character_info=Class("TMPro","TMP_CharacterInfo");
+        character_code=StructOffset(character_info,"character");
+        character_material=StructOffset(character_info,"materialReferenceIndex");
+        character_vertex=StructOffset(character_info,"vertexIndex");
+        character_visible=StructOffset(character_info,"isVisible");
+        mesh_colors=StructOffset(Class("TMPro","TMP_MeshInfo"),"colors32");
+        const auto character_array=api->class_from_type(api->field_get_type(info_characters));
+        const auto mesh_array=api->class_from_type(api->field_get_type(info_meshes));
+        if(!character_array||!mesh_array)throw std::runtime_error("TMP_TextInfo array types unavailable");
+        character_size=static_cast<std::size_t>(api->class_array_element_size(character_array));
+        mesh_size=static_cast<std::size_t>(api->class_array_element_size(mesh_array));
+        if(std::max({character_code+sizeof(wchar_t),character_material+sizeof(std::int32_t),character_vertex+sizeof(std::int32_t),character_visible+sizeof(bool)})>character_size||
+            mesh_colors+sizeof(void*)>mesh_size)
+            throw std::runtime_error("TMP character or mesh info layout unexpected");
         const auto merge=Method(Class("Google.Protobuf","MessageExtensions"),"MergeFrom",{"Google.Protobuf.IMessage","System.ReadOnlySpan"});
         const auto presenter=Class("Campus.Common","AdvPresenterBase");
         const auto load_async=Method(presenter,"_LoadAsync",{"System.String","System.Threading.CancellationToken","System.Boolean"});
@@ -848,10 +964,11 @@ void gakumas::PrepareLocalization(unity::Api& unity_api,unity::Domain* unity_dom
         CreateHook(parse,reinterpret_cast<void*>(&HookParseInputText),original_parse,created);
         CreateHook(set_text,reinterpret_cast<void*>(&HookSetText),original_set_text,created);
         CreateHook(ui_set_text,reinterpret_cast<void*>(&HookUiSetText),original_ui_set_text,created);
+        CreateHook(hide_replace_text,reinterpret_cast<void*>(&HookHideReplaceText),original_hide_replace_text,created);
         if(!master_classes.empty())CreateHook(merge,reinterpret_cast<void*>(&HookMergeFrom),original_merge,created);
         CreateHook(load_async,reinterpret_cast<void*>(&HookLoadAsync),original_load_async,created);
         CreateHook(load_script,reinterpret_cast<void*>(&HookLoadScript),original_load_script,created);
-        Log(L"Hooks prepared: I18n.SetValue, TMP_Text.ParseInputText/SetText, UI.Text.set_text, "+
+        Log(L"Hooks prepared: I18n.SetValue, TMP_Text.ParseInputText/SetText, UI.Text.set_text, TextInLineObjectSetter.HideReplaceText, "+
             std::wstring(master_classes.empty()?L"":L"MessageExtensions.MergeFrom (master data), ")+L"AdvPresenterBase._LoadAsync, Uguiss.Engine.LoadScript");
     }catch(const std::exception& failure) {
         for(const auto target:created)MH_RemoveHook(target);
