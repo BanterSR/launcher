@@ -39,4 +39,5 @@ namespace Momoko.Launcher.Core;
 [JsonSerializable(typeof(UiState))]
 [JsonSerializable(typeof(UiLog))]
 [JsonSerializable(typeof(UiToast))]
+[JsonSerializable(typeof(UiSignal))]
 internal sealed partial class LauncherJson:JsonSerializerContext;

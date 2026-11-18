@@ -10,7 +10,7 @@ namespace Momoko.Launcher.Games.Gakumas;
 // GAKUMAS_LAUNCH_CONTEXT_ prefix. The native side checks length and presence.
 internal sealed class LaunchContext
 {
-    public const string Version="9";
+    public const string Version="10";
     private const string EnvironmentVariable="GAKUMAS_LAUNCH_CONTEXT";
     private readonly Dictionary<string,string> environment=new(){{EnvironmentVariable,Version}};
     public string PlayerLogPath { get; }
@@ -38,6 +38,7 @@ internal sealed class LaunchContext
             Put("LOCALIZATION_DIRECTORY",1024,LocalizationPackage.DirectoryPath);
             Put("LOCALIZATION_FONT",1024,launch.LocalizationFont);
         }
+        Put("FREE_RESOLUTION",2,launch.FreeResolution?"1":"0");
     }
 
     // The DMM viewer id the client expects: a stable 9-digit number from the

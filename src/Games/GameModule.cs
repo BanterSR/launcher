@@ -8,7 +8,7 @@ internal sealed record GameEndpoints(string Sdk,string Game,string Resource);
 internal sealed record SdkSession(string IdToken,string PlatformToken,string RefreshToken,string UserId,string PlayerId,string PublicUserId);
 
 internal sealed record GameLaunch(string ExecutablePath,GameEndpoints Endpoints,SdkSession Session,bool Localization,
-    string LocalizationFont,bool ClientConsole,IReadOnlyList<string> Arguments);
+    string LocalizationFont,bool FreeResolution,bool ClientConsole,IReadOnlyList<string> Arguments);
 
 internal sealed record LocalizationInfo(string Source,string Version,DateTime ImportedAt,int Files,int Ignored,string[] Skipped);
 
@@ -21,6 +21,8 @@ internal abstract class GameModule
     public abstract string ExecutableName { get; }
     public abstract string DefaultExecutable { get; }
     public virtual bool SupportsLocalization=>false;
+    // The launcher can let the player resize the game window freely.
+    public virtual bool SupportsFreeResolution=>false;
 
     public string DataFolder=>Core.AppPaths.GameData(Id);
 

@@ -10,7 +10,6 @@
   const SPARK = 'M12 2C12.8 8 16 11.2 22 12C16 12.8 12.8 16 12 22C11.2 16 8 12.8 2 12C8 11.2 11.2 8 12 2Z';
   const GEAR = 'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z';
   const icons = {
-    spark: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${SPARK}"/></svg>`,
     gear: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="${GEAR}"/></svg>`,
     play: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M7 5v14l11-7z"/></svg>',
     close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
@@ -118,10 +117,13 @@
       <svg class="spark-line" viewBox="0 0 24 24"><path d="${SPARK}"/></svg></div>`;
   }
 
+  // The Momoko logo, the same image as the application icon.
+  const logo = '<img src="logo.png" alt="">';
+
   function passportCard() {
     const update = newer();
-    const head = `<span class="logo" aria-hidden="true">${icons.spark}</span><h1 class="brand">MOMOKO</h1><p class="brand-sub">游戏启动器</p>${update
-      ? `<div class="links"><button type="button" class="link update-link" data-send="update.open">发现新版本 ${esc(update.latest)}，前往下载</button></div>` : ''}`;
+    const head = `<span class="logo" aria-hidden="true">${logo}</span><h1 class="brand">MOMOKO</h1><p class="brand-sub">游戏启动器</p>${update
+      ? `<div class="links"><button type="button" class="link update-link" data-action="ui.update">发现新版本 ${esc(update.latest)}，立即更新</button></div>` : ''}`;
     const login = state.login || {};
     const busy = !!login.busy;
     const error = `<p class="form-error" role="alert">${esc(login.error || '')}</p>`;
@@ -165,6 +167,9 @@
     return `<div class="art" aria-hidden="true">${media}<div class="scrim-b"></div><div class="scrim-l"></div></div>`;
   }
 
+  // A server is always named with its game: "game (server)".
+  const fullName = (server) => `${server.title} (${server.name})`;
+
   // Game icon uploaded for the server in Momoko; without one the rail shows
   // the game name's first letter.
   const gameIcon = (item) => (item.icon
@@ -172,17 +177,21 @@
     : `<span class="initial">${esc((item.title || item.game || '?').charAt(0).toUpperCase())}</span>`);
 
   function railView(server) {
-    const games = (state.servers || []).map((item) => `<button type="button" class="game" data-send="server.select" data-id="${esc(item.id)}"
-        data-tip="${esc(item.title)}" data-tip-sub="${esc(item.name)}" aria-label="${esc(item.title + ' · ' + item.name)}"${server && item.id === server.id ? ' aria-current="page"' : ''}>
-        ${gameIcon(item)}</button>`).join('');
+    // The selected server: an accent bar beside its icon (no frame on the icon).
+    const games = (state.servers || []).map((item) => {
+      const selected = server && item.id === server.id;
+      return `<div class="slot${selected ? ' current' : ''}"><button type="button" class="game" data-send="server.select" data-id="${esc(item.id)}"
+        data-tip="${esc(fullName(item))}" aria-label="${esc(fullName(item))}"${selected ? ' aria-current="page"' : ''}>
+        ${gameIcon(item)}</button><span class="caption" aria-hidden="true">${esc(item.name)}</span></div>`;
+    }).join('');
     return `<nav class="rail" aria-label="游戏">
-      <span class="mark" aria-hidden="true">${icons.spark}</span><span class="sep" aria-hidden="true"></span>
+      <span class="mark" aria-hidden="true">${logo}</span><span class="sep" aria-hidden="true"></span>
       <div class="games">${games}</div>
       <div class="fill"></div>${newer()
-        ? `<button type="button" class="icon update" data-send="update.open" data-tip="发现新版本 ${esc(newer().latest)}" data-tip-sub="前往 GitHub 下载" aria-label="下载新版本">${icons.download}</button>` : ''}
+        ? `<button type="button" class="icon update" data-action="ui.update" data-tip="发现新版本 ${esc(newer().latest)}" data-tip-sub="点击更新启动器" aria-label="更新启动器">${icons.download}</button>` : ''}
       <button type="button" class="icon" data-send="server.refresh" data-tip="刷新服务器列表" aria-label="刷新服务器列表">${icons.refresh}</button>
       <button type="button" class="icon" data-action="ui.settings" data-tab="general" data-tip="设置" aria-label="设置">${icons.gear}</button>
-      <button type="button" class="avatar-button" data-action="ui.settings" data-tab="general" data-tip="${esc(state.account ? state.account.name : '')}" data-tip-sub="Momoko 通行证" aria-label="通行证账号">${avatar(state.account)}</button>
+      <button type="button" class="avatar-button" data-action="ui.account" data-tip="${esc(state.account ? state.account.name : '')}" data-tip-sub="Momoko 通行证" aria-label="通行证账号">${avatar(state.account)}</button>
     </nav>`;
   }
 
@@ -195,8 +204,9 @@
           <div class="cta-row"><button type="button" class="btn" data-send="open.account">打开通行证</button><button type="button" class="btn accent" data-send="server.refresh">刷新</button></div></div>`;
     }
     const [tone, label] = serverState(server);
-    const heading = `<div class="heading"><h1>${esc(server.title)}</h1>
-      <span class="server"><span class="dot ${tone}" aria-hidden="true"></span>${esc(server.name)}<small>${esc(label)}</small></span></div>`;
+    // Several servers can run the same game: the heading always names the server.
+    const heading = `<div class="heading"><h1>${esc(fullName(server))}</h1>
+      <span class="server"><span class="dot ${tone}" aria-hidden="true"></span>${esc(label)}</span></div>`;
     const status = server.status;
     const player = server.player;
     // Developer build: the test password login reaches the SDK without a Momoko link.
@@ -204,7 +214,7 @@
     let card = '';
     if (status === 'running') {
       card = `<div class="card row" role="status"><span class="beacon" aria-hidden="true"></span><span class="stack"><span class="title">游戏运行中</span>
-        <span class="body">退出游戏后会自动清理本次登录留下的文件，存档和资源缓存不受影响。关闭启动器会缩到后台，清理完成后自动退出。</span></span></div>`;
+        <span class="body">退出游戏后会自动清理本次登录留下的文件，存档和资源缓存不受影响。这时退出启动器会先最小化，清理完成后自动退出。</span></span></div>`;
     } else if (status === 'cleaning') {
       card = `<div class="card row" role="status"><span class="beacon warn" aria-hidden="true"></span><span class="stack"><span class="title">正在清理</span>
         <span class="body">游戏已退出，正在删除本次登录留下的文件。</span></span></div>`;
@@ -224,7 +234,7 @@
         <span class="body">请选择 ${esc(server.executable.name)} 的位置。</span></span></div>`;
     }
     const pill = player && (status === 'idle' || status === 'launching')
-      ? `<span class="pill"><span class="dot ok" aria-hidden="true"></span><span>玩家 ${esc(player.displayId || player.id)}${player.nickname ? ' · ' + esc(player.nickname) : ''}</span></span>` : '';
+      ? `<button type="button" class="pill" data-action="ui.player" data-id="${esc(server.id)}" aria-label="游戏账号信息"><span class="dot ok" aria-hidden="true"></span><span>玩家 ${esc(player.displayId || player.id)}${player.nickname ? ' · ' + esc(player.nickname) : ''}</span></button>` : '';
     let cta;
     if (status === 'launching') cta = '<button type="button" class="cta quiet" disabled><span class="spinner" aria-hidden="true"></span>正在启动</button>';
     else if (status === 'running') cta = '<button type="button" class="cta quiet" disabled>运行中</button>';
@@ -244,8 +254,13 @@
     const themes = [['system', '跟随系统'], ['light', '浅色'], ['dark', '深色']].map(([key, label]) =>
       `<button type="button" aria-pressed="${state.theme === key}" data-send="theme.set" data-value="${key}">${label}</button>`).join('');
     const account = state.account;
+    const closeAction = (state.window && state.window.closeAction) || 'ask';
+    const closes = [['ask', '每次询问'], ['tray', '最小化到托盘'], ['exit', '退出启动器']].map(([key, label]) =>
+      `<button type="button" aria-pressed="${closeAction === key}" data-send="close.set" data-value="${key}">${label}</button>`).join('');
     const list = [
       section('外观', `<div class="group"><div class="item"><span class="label"><span>主题</span></span><div class="seg" role="group" aria-label="主题">${themes}</div></div></div>`),
+      section('窗口', `<div class="group"><div class="item"><span class="label"><span>关闭窗口时</span><small>托盘图标在任务栏通知区域，点击可重新打开启动器</small></span>
+          <div class="seg" role="group" aria-label="关闭窗口时">${closes}</div></div></div>`),
       section('通行证', `<div class="group"><div class="item">${avatar(account, true)}<span class="label"><span>${esc(account ? account.name : '')}</span>
           <small>${esc(account && account.username !== account.name ? account.username + ' · ' : '')}Momoko 通行证 · 所有游戏共用</small></span>
           <button type="button" class="btn" data-send="open.account">管理</button></div>
@@ -269,8 +284,8 @@
     } else if (update.checking) {
       detail = '正在检查更新…';
     } else if (update.latest) {
-      detail = `发现新版本 ${update.latest}`;
-      button = '<button type="button" class="btn accent" data-send="update.open">前往下载</button>';
+      detail = update.installing ? `正在更新到 ${update.latest}…` : `发现新版本 ${update.latest}`;
+      button = '<button type="button" class="btn accent" data-action="ui.update">更新</button>';
     } else {
       detail = update.error ? `检查更新失败：${update.error}` : '已是最新版本';
       button = '<button type="button" class="btn" data-send="update.check">检查更新</button>';
@@ -286,6 +301,12 @@
           <small class="mono" title="${esc(exe.path)}">${esc(exe.path)}</small>${exe.valid ? '' : `<small class="bad">找不到有效的 ${esc(exe.name)}，请重新选择。</small>`}</span>
           <button type="button" class="btn" data-send="game.browse" data-game="${esc(server.game)}">更改</button></div></div>`)
     ];
+    if (server.freeResolution != null) {
+      const id = 'res-' + esc(server.game);
+      list.push(section('窗口', `<div class="group"><label class="item" for="${id}"><span class="label"><span>自由分辨率</span>
+          <small>拖动边框或最大化来调整游戏窗口，保持游戏的竖屏 / 横屏比例范围。启动游戏时生效</small></span>
+          ${sw(id, server.freeResolution, server.status !== 'idle', `data-change="game.freeResolution" data-game="${esc(server.game)}"`)}</label></div>`));
+    }
     const loc = server.localization;
     if (loc) {
       const pkg = loc.package;
@@ -321,14 +342,56 @@
   }
 
   // ---------- dialogs ----------
+  // Binding methods as the Momoko passport names them.
+  const bindMethods = {
+    password: '游戏账号密码校验', code: '游戏内绑定码', create: '通行证新建的游戏账号', admin: '管理员替你绑定', request: '申请后管理员通过'
+  };
+  const fact = (label, value, hint) => `<div class="fact"><span>${esc(label)}</span><b>${esc(value)}${hint ? `<small>${esc(hint)}</small>` : ''}</b></div>`;
+
+  // Passport card: opened from the account avatar in the rail.
+  function accountCard() {
+    const account = state.account;
+    if (!account) return '';
+    const email = account.email ? fact('邮箱', account.email, account.emailVerified ? '' : '未验证') : fact('邮箱', '没有绑定邮箱');
+    return `<div class="who">${avatar(account, true)}<span class="label"><span id="dialog-title">${esc(account.name)}</span>
+        <small>${account.username && account.username !== account.name ? '@' + esc(account.username) + ' · ' : ''}Momoko 通行证${account.joined ? ' · ' + esc(account.joined) + ' 加入' : ''}</small></span></div>
+      <div class="facts">${email}${fact('最近登录', account.lastLogin || '—')}${fact('两步验证', account.totpEnabled ? '已开启' : '未开启')}</div>
+      <p class="note">通行证所有游戏共用，资料与安全设置在通行证网页里管理。</p>
+      <div class="row-buttons"><button type="button" class="btn" data-action="ui.logout">退出登录</button><span class="grow"></span>
+        <button type="button" class="btn accent" data-send="open.account">管理通行证</button></div>`;
+  }
+
+  // Game account card: the passport's account on the selected server,
+  // opened from the player pill.
+  function playerCard(server) {
+    const player = server.player;
+    const rows = [
+      fact('游戏内 ID', player.displayId || player.id),
+      player.level > 0 ? fact('等级', `Lv ${player.level}`) : '',
+      player.account ? fact('登录账号', player.account) : '',
+      player.method ? fact('绑定方式', bindMethods[player.method] || player.method) : '',
+      player.linkedAt ? fact('绑定时间', player.linkedAt) : '',
+      fact('最近使用', player.lastSeen || '还没有使用过')
+    ].join('');
+    return `<div class="who"><span class="game-icon">${gameIcon(server)}</span>
+        <span class="label"><span id="dialog-title">${esc(player.nickname || '游戏账号')}</span><small>${esc(fullName(server))}</small></span></div>
+      <div class="facts">${rows}</div>
+      <div class="row-buttons"><button type="button" class="btn" data-action="ui.close">关闭</button><span class="grow"></span>
+        <button type="button" class="btn accent" data-send="open.gameSpace" data-id="${esc(server.id)}">打开游戏空间</button></div>`;
+  }
+
   function dialogView() {
     const dialog = ui.dialog;
     const server = dialog.id ? (state.servers || []).find((item) => item.id === dialog.id) : null;
     const pending = ui.pending === dialog.kind;
     const wrap = (body) => `<div class="scrim modal" data-dismiss><div class="sheet dialog${entering()}" role="dialog" aria-modal="true" aria-labelledby="dialog-title">${body}</div></div>`;
+    // Cards next to what opened them; a click outside closes them.
+    const card = (cls, body) => `<div class="scrim" data-dismiss><div class="sheet card-pop ${cls}${entering()}" role="dialog" aria-modal="true" aria-labelledby="dialog-title">${body}</div></div>`;
+    if (dialog.kind === 'account') return card('account', accountCard());
+    if (dialog.kind === 'player' && server && server.player) return card('player', playerCard(server));
     if (dialog.kind === 'bind' && server) {
       return wrap(`<h2 id="dialog-title">绑定已有游戏账号</h2>
-        <p>输入 ${esc(server.name)} 上的游戏账号和密码。绑定后这个游戏账号归属当前通行证。</p>
+        <p>输入 ${esc(fullName(server))} 上的游戏账号和密码。绑定后这个游戏账号归属当前通行证。</p>
         <form class="form" data-submit="bind" autocomplete="off">
           <input id="bind-account" class="field" data-keep placeholder="游戏账号" aria-label="游戏账号" spellcheck="false"${attr('disabled', pending)}>
           <input id="bind-password" class="field" data-keep type="password" placeholder="游戏密码" aria-label="游戏密码"${attr('disabled', pending)}>
@@ -338,7 +401,7 @@
     }
     if (dialog.kind === 'create' && server) {
       return wrap(`<h2 id="dialog-title">新建游戏账号</h2>
-        <p>将在 ${esc(server.name)} 上新建一个游戏账号，并绑定到当前通行证。</p>
+        <p>将在 ${esc(fullName(server))} 上新建一个游戏账号，并绑定到当前通行证。</p>
         <div class="row-buttons"><button type="button" class="btn" data-action="ui.close">取消</button>
           <button type="button" class="btn accent" data-action="confirm.create" data-id="${esc(server.id)}"${attr('disabled', pending)}>${pending ? '正在创建…' : '新建'}</button></div>`);
     }
@@ -346,6 +409,35 @@
       return wrap(`<h2 id="dialog-title">开源许可</h2>
         <pre class="licenses">${esc(ui.licenses ?? '正在读取…')}</pre>
         <div class="row-buttons"><button type="button" class="btn" data-action="ui.close">关闭</button></div>`).replace('sheet dialog', 'sheet dialog wide-dialog');
+    }
+    if (dialog.kind === 'update') {
+      const update = state.update || {};
+      const installing = !!update.installing;
+      const percent = Math.max(0, Math.min(100, update.progress));
+      const progress = installing
+        ? `<div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><span style="width:${percent}%"></span></div>
+          <p class="form-hint">${percent < 100 ? `正在下载 ${percent}%` : '正在安装，启动器即将重启…'}</p>` : '';
+      const blocked = !installing && update.blocked ? `<p class="form-error" role="alert">${esc(update.blocked)}</p>` : '';
+      const confirm = update.installable
+        ? `<button type="button" class="btn accent" data-send="update.install"${attr('disabled', installing || !!update.blocked)}>${installing ? '正在更新…' : '立即更新'}</button>`
+        : '<button type="button" class="btn accent" data-send="update.open">前往下载</button>';
+      return wrap(`<h2 id="dialog-title">发现新版本 ${esc(update.latest)}</h2>
+        <p>当前版本 ${esc(update.version)}。${update.installable ? '立即更新会下载新版启动器，校验后替换当前程序并自动重启。' : '这个版本没有可自动安装的启动器文件，请前往 GitHub 下载。'}</p>
+        ${update.notes ? `<pre class="licenses release-notes">${esc(update.notes)}</pre>` : ''}${progress}${blocked}
+        <div class="row-buttons"><button type="button" class="btn" data-send="update.open">发布页</button><span class="grow"></span>
+          <button type="button" class="btn" data-action="ui.close">稍后</button>${confirm}</div>`);
+    }
+    if (dialog.kind === 'close') {
+      const choice = dialog.choice || 'tray';
+      const options = [['tray', '最小化到托盘'], ['exit', '退出启动器']].map(([key, label]) =>
+        `<button type="button" aria-pressed="${choice === key}" data-action="ui.closeChoice" data-value="${key}">${label}</button>`).join('');
+      return wrap(`<h2 id="dialog-title">关闭启动器</h2>
+        <p>${choice === 'tray' ? '启动器在后台运行，图标留在任务栏通知区域，点击图标重新打开。' : '退出启动器。游戏运行中时，启动器会等游戏退出并清理完成后再退出。'}</p>
+        <div class="seg full choice" role="group" aria-label="关闭方式">${options}</div>
+        <div class="group remember"><label class="item" for="close-remember"><span class="label"><span>记住我的选择</span>
+          <small>不再询问，可在「设置 → 通用 → 窗口」里更改</small></span>${sw('close-remember', !!dialog.remember, false, 'data-change="ui.closeRemember"')}</label></div>
+        <div class="row-buttons"><button type="button" class="btn" data-action="ui.close">取消</button>
+          <button type="button" class="btn accent" data-action="confirm.close">确定</button></div>`);
     }
     if (dialog.kind === 'logout') {
       return wrap(`<h2 id="dialog-title">退出登录</h2>
@@ -370,9 +462,16 @@
     applyTheme();
     const ready = state.phase === 'ready';
     if (!ready) ui.settings = null;
-    if (ui.dialog && ui.dialog.kind !== 'logout' && !ready) ui.dialog = null;
+    // Logout, update and close dialogs also work on the passport screens.
+    if (ui.dialog && !['logout', 'update', 'close'].includes(ui.dialog.kind) && !ready) ui.dialog = null;
+    if (ui.dialog && ui.dialog.kind === 'update' && !newer()) ui.dialog = null;
     const server = ready ? current() : null;
-    if (ui.dialog && ui.dialog.id && (!server || ui.dialog.id !== server.id || server.player)) { ui.dialog = null; ui.pending = null; }
+    // Bind / create close once the server has a game account; the game
+    // account card closes when the account or the selection goes away.
+    if (ui.dialog && ui.dialog.id) {
+      const gone = !server || ui.dialog.id !== server.id;
+      if (gone || (ui.dialog.kind === 'player' ? !server.player : !!server.player)) { ui.dialog = null; ui.pending = null; }
+    }
     const key = ui.dialog ? 'dialog:' + ui.dialog.kind : ui.settings ? 'settings' : '';
     if (key !== sheetKey) { sheetKey = key; sheetOpenedAt = key ? performance.now() : 0; }
 
@@ -438,7 +537,22 @@
       }
     },
     'confirm.create': (el) => { ui.pending = 'create'; send('server.create', { id: el.dataset.id }); render(); },
-    'confirm.logout': () => { ui.dialog = null; ui.settings = null; send('auth.logout'); render(); }
+    'confirm.logout': () => { ui.dialog = null; ui.settings = null; send('auth.logout'); render(); },
+    'ui.update': () => { ui.dialog = { kind: 'update' }; render(); },
+    'ui.account': () => { ui.settings = null; ui.dialog = { kind: 'account' }; render(); },
+    'ui.player': (el) => { ui.settings = null; ui.dialog = { kind: 'player', id: el.dataset.id }; render(); },
+    'ui.closeChoice': (el) => { ui.dialog.choice = el.dataset.value; render(); },
+    'confirm.close': () => {
+      const dialog = ui.dialog;
+      ui.dialog = null;
+      render();
+      send('window.closeChoice', { action: dialog.choice || 'tray', remember: !!dialog.remember });
+    }
+  };
+
+  // Changes that only touch local UI state.
+  const localChanges = {
+    'ui.closeRemember': (el) => { if (ui.dialog) ui.dialog.remember = el.checked; }
   };
 
   const submits = {
@@ -474,6 +588,7 @@
     const el = event.target.closest('[data-change]');
     if (!el) return;
     const name = el.dataset.change;
+    if (localChanges[name]) { localChanges[name](el, event); return; }
     if (ext.changes[name]) { ext.changes[name](el, event); return; }
     const args = Object.assign({}, el.dataset);
     delete args.change; delete args.key;
@@ -525,6 +640,24 @@
       if (message.type === 'toast') {
         toast(message.kind, message.text);
         if (ui.pending) { ui.pending = null; render(); }
+        return;
+      }
+      // A newer release found by the update check; does not replace a dialog in use.
+      if (message.type === 'update.prompt') {
+        if (!ui.dialog || ui.dialog.kind === 'update') { ui.dialog = { kind: 'update' }; render(); }
+        return;
+      }
+      // "打开设置" in the notification area menu.
+      if (message.type === 'settings.open') {
+        ui.dialog = null;
+        ui.settings = 'general';
+        render();
+        return;
+      }
+      if (message.type === 'close.ask') {
+        ui.settings = null;
+        ui.dialog = { kind: 'close', choice: 'tray', remember: false };
+        render();
         return;
       }
       ext.messages.forEach((fn) => fn(message));

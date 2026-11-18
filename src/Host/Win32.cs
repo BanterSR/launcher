@@ -9,10 +9,17 @@ internal static unsafe partial class Win32
     public const uint WS_POPUP=0x80000000,WS_CAPTION=0x00C00000,WS_SYSMENU=0x00080000,WS_THICKFRAME=0x00040000,
         WS_MINIMIZEBOX=0x00020000,WS_CLIPCHILDREN=0x02000000;
     public const uint WS_EX_APPWINDOW=0x00040000;
-    public const int SW_SHOWNORMAL=1,SW_MINIMIZE=6,SW_RESTORE=9,SW_SHOW=5;
-    public const uint WM_DESTROY=0x0002,WM_MOVE=0x0003,WM_SIZE=0x0005,WM_ACTIVATE=0x0006,WM_CLOSE=0x0010,
-        WM_SETTINGCHANGE=0x001A,WM_NCCALCSIZE=0x0083,WM_NCHITTEST=0x0084,WM_NCLBUTTONDOWN=0x00A1,
-        WM_DPICHANGED=0x02E0,WM_APP=0x8000;
+    public const int SW_HIDE=0,SW_SHOWNORMAL=1,SW_MINIMIZE=6,SW_RESTORE=9,SW_SHOW=5;
+    public const uint WM_NULL=0x0000,WM_DESTROY=0x0002,WM_MOVE=0x0003,WM_SIZE=0x0005,WM_ACTIVATE=0x0006,WM_CLOSE=0x0010,
+        WM_SHOWWINDOW=0x0018,WM_SETTINGCHANGE=0x001A,WM_CONTEXTMENU=0x007B,WM_NCCALCSIZE=0x0083,WM_NCHITTEST=0x0084,
+        WM_NCLBUTTONDOWN=0x00A1,WM_LBUTTONDBLCLK=0x0203,WM_DPICHANGED=0x02E0,WM_APP=0x8000;
+    // Notification area icon (Shell_NotifyIconW, NOTIFYICON_VERSION_4).
+    public const uint NIM_ADD=0,NIM_DELETE=2,NIM_SETVERSION=4;
+    public const uint NIF_MESSAGE=0x1,NIF_ICON=0x2,NIF_TIP=0x4,NIF_SHOWTIP=0x80;
+    public const uint NOTIFYICON_VERSION_4=4,NIN_SELECT=0x0400,NIN_KEYSELECT=0x0401;
+    public const uint MF_STRING=0x0,MF_GRAYED=0x1,MF_SEPARATOR=0x800,TPM_RIGHTBUTTON=0x2,TPM_NONOTIFY=0x80,TPM_RETURNCMD=0x100;
+    public const uint IMAGE_ICON=1;
+    public const int SM_CXICON=11,SM_CYICON=12,SM_CXSMICON=49,SM_CYSMICON=50;
     public const int HTCLIENT=1,HTCAPTION=2;
     public const nint SIZE_MINIMIZED=1,WA_INACTIVE=0;
     public const uint SWP_NOZORDER=0x0004,SWP_NOACTIVATE=0x0010,SWP_FRAMECHANGED=0x0020;
@@ -99,6 +106,62 @@ internal static unsafe partial class Win32
     }
 
     public const uint OFN_FILEMUSTEXIST=0x00001000,OFN_PATHMUSTEXIST=0x00000800,OFN_NOCHANGEDIR=0x00000008,OFN_EXPLORER=0x00080000;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct NOTIFYICONDATAW
+    {
+        public uint Size;
+        public nint Window;
+        public uint Id,Flags,CallbackMessage;
+        public nint Icon;
+        public fixed char Tip[128];
+        public uint State,StateMask;
+        public fixed char Info[256];
+        public uint Version;
+        public fixed char InfoTitle[64];
+        public uint InfoFlags;
+        public Guid Item;
+        public nint BalloonIcon;
+    }
+
+    [LibraryImport("shell32.dll")]
+    [return:MarshalAs(UnmanagedType.Bool)]
+    public static partial bool Shell_NotifyIconW(uint message,in NOTIFYICONDATAW data);
+
+    [LibraryImport("user32.dll",StringMarshalling=StringMarshalling.Utf16)]
+    public static partial uint RegisterWindowMessageW(string name);
+
+    [LibraryImport("user32.dll")]
+    public static partial nint CreatePopupMenu();
+
+    [LibraryImport("user32.dll",StringMarshalling=StringMarshalling.Utf16)]
+    [return:MarshalAs(UnmanagedType.Bool)]
+    public static partial bool AppendMenuW(nint menu,uint flags,nuint id,string? text);
+
+    [LibraryImport("user32.dll")]
+    public static partial int TrackPopupMenuEx(nint menu,uint flags,int x,int y,nint window,nint parameters);
+
+    [LibraryImport("user32.dll")]
+    [return:MarshalAs(UnmanagedType.Bool)]
+    public static partial bool DestroyMenu(nint menu);
+
+    [LibraryImport("user32.dll")]
+    [return:MarshalAs(UnmanagedType.Bool)]
+    public static partial bool SetMenuDefaultItem(nint menu,uint item,uint byPosition);
+
+    [LibraryImport("user32.dll")]
+    public static partial nint LoadImageW(nint instance,nint name,uint type,int width,int height,uint flags);
+
+    [LibraryImport("user32.dll")]
+    [return:MarshalAs(UnmanagedType.Bool)]
+    public static partial bool DestroyIcon(nint icon);
+
+    [LibraryImport("user32.dll")]
+    public static partial int GetSystemMetrics(int index);
+
+    [LibraryImport("user32.dll")]
+    [return:MarshalAs(UnmanagedType.Bool)]
+    public static partial bool IsWindowVisible(nint window);
 
     [LibraryImport("user32.dll",SetLastError=true)]
     public static partial ushort RegisterClassExW(in WNDCLASSEXW windowClass);

@@ -7,12 +7,16 @@ namespace Momoko.Launcher.Host;
 // in the executable and served from memory through WebResourceRequested:
 // https://ui.momoko.example/<path> is resource "ui/<path>". Game icons and
 // backgrounds are cached files under https://media.momoko.example/ (a WebView2
-// virtual host mapped to data\media).
+// virtual host mapped to data\media). While the launcher runs it has an icon
+// in the notification area: clicking it shows the window, its menu shows the
+// window or exits; closing the window can hide it there (HideToTray).
 internal sealed unsafe class HostWindow
 {
     public static readonly string ClassName=App.LauncherApp.Developer?"MomokoLauncherDevWindow":"MomokoLauncherWindow";
     public const string UiHost="ui.momoko.example";
     private const int LogicalWidth=1280,LogicalHeight=720;
+    private const uint TrayMessage=Win32.WM_APP+2;
+    private const uint TrayShow=1,TrayExit=2,TrayFirstItem=100;
     private static HostWindow? current;
 
     private readonly string title,userDataFolder;
@@ -24,10 +28,19 @@ internal sealed unsafe class HostWindow
     private WebViewColor background;
     private bool dark;
     private bool minimized;
+    private nint trayIcon;
+    private bool trayAdded;
+    private uint taskbarCreated;
 
     public event Action<string>? MessageReceived;
     public event Action? CloseRequested;
+    // "退出启动器" in the notification area icon's menu.
+    public event Action? ExitRequested;
     public event Action<string>? Failed;
+    // Quick actions of the notification area menu, between "显示启动器" and
+    // "退出启动器"; a chosen item raises TrayCommand with its command.
+    public Func<IReadOnlyList<TrayItem>>? TrayItems { get; set; }
+    public event Action<string>? TrayCommand;
 
     public nint Handle=>handle;
     public bool Ready=>webView is not null;
@@ -41,8 +54,9 @@ internal sealed unsafe class HostWindow
     {
         current=this;
         var module=Win32.GetModuleHandleW(null);
-        var icon=Win32.LoadIconW(module,Win32.IDI_APPLICATION);
-        if(icon==0)icon=Win32.LoadIconW(0,Win32.IDI_APPLICATION);
+        // The application icon (assets\launcher.ico) at the large and small system sizes.
+        var icon=LoadIcon(module,Win32.SM_CXICON,Win32.SM_CYICON);
+        trayIcon=LoadIcon(module,Win32.SM_CXSMICON,Win32.SM_CYSMICON);
         fixed(char* name=ClassName)
         {
             var windowClass=new Win32.WNDCLASSEXW
@@ -51,7 +65,7 @@ internal sealed unsafe class HostWindow
                 WindowProc=&WindowProc,
                 Instance=module,
                 Icon=icon,
-                SmallIcon=icon,
+                SmallIcon=trayIcon,
                 Cursor=Win32.LoadCursorW(0,Win32.IDC_ARROW),
                 ClassName=name
             };
@@ -79,6 +93,112 @@ internal sealed unsafe class HostWindow
         ApplyFrame(dark);
         Win32.SetWindowPos(handle,0,x,y,width,height,Win32.SWP_NOZORDER|Win32.SWP_FRAMECHANGED);
         background=dark?new WebViewColor{A=255,R=0x0B,G=0x0C,B=0x10}:new WebViewColor{A=255,R=0xF3,G=0xF4,B=0xF7};
+        // Explorer broadcasts TaskbarCreated when it restarts; the icon is added again.
+        taskbarCreated=Win32.RegisterWindowMessageW("TaskbarCreated");
+        AddTrayIcon();
+    }
+
+    private static nint LoadIcon(nint module,int widthMetric,int heightMetric)
+    {
+        var icon=Win32.LoadImageW(module,Win32.IDI_APPLICATION,Win32.IMAGE_ICON,
+            Win32.GetSystemMetrics(widthMetric),Win32.GetSystemMetrics(heightMetric),0);
+        return icon!=0?icon:Win32.LoadIconW(0,Win32.IDI_APPLICATION);
+    }
+
+    // ---------------------------------------------------------------- notification area
+
+    private void AddTrayIcon()
+    {
+        var data=TrayData();
+        data.Flags=Win32.NIF_MESSAGE|Win32.NIF_ICON|Win32.NIF_TIP|Win32.NIF_SHOWTIP;
+        data.CallbackMessage=TrayMessage;
+        data.Icon=trayIcon;
+        title.AsSpan(0,Math.Min(title.Length,127)).CopyTo(new Span<char>(data.Tip,128));
+        trayAdded=Win32.Shell_NotifyIconW(Win32.NIM_ADD,in data);
+        if(!trayAdded){Core.LauncherLog.Warn("无法在通知区域添加启动器图标。");return;}
+        data.Version=Win32.NOTIFYICON_VERSION_4;
+        Win32.Shell_NotifyIconW(Win32.NIM_SETVERSION,in data);
+    }
+
+    private void RemoveTrayIcon()
+    {
+        if(!trayAdded)return;
+        var data=TrayData();
+        Win32.Shell_NotifyIconW(Win32.NIM_DELETE,in data);
+        trayAdded=false;
+    }
+
+    private Win32.NOTIFYICONDATAW TrayData()=>new(){Size=(uint)sizeof(Win32.NOTIFYICONDATAW),Window=handle,Id=1};
+
+    // NOTIFYICON_VERSION_4: the low word of lParam is the event, wParam the
+    // anchor point in screen coordinates.
+    private void OnTray(nint wParam,nint lParam)
+    {
+        switch((uint)(lParam&0xFFFF))
+        {
+            case Win32.NIN_SELECT:
+            case Win32.NIN_KEYSELECT:
+            case Win32.WM_LBUTTONDBLCLK:
+                ShowFromTray();
+                break;
+            case Win32.WM_CONTEXTMENU:
+                ShowTrayMenu((short)(wParam&0xFFFF),(short)((wParam>>16)&0xFFFF));
+                break;
+        }
+    }
+
+    private void ShowTrayMenu(int x,int y)
+    {
+        var menu=Win32.CreatePopupMenu();
+        if(menu==0)return;
+        try
+        {
+            var items=TrayItems?.Invoke()??[];
+            Win32.AppendMenuW(menu,Win32.MF_STRING,TrayShow,"显示启动器");
+            Win32.SetMenuDefaultItem(menu,TrayShow,0);
+            Win32.AppendMenuW(menu,Win32.MF_SEPARATOR,0,null);
+            for(var i=0;i<items.Count;i++)
+            {
+                var item=items[i];
+                if(item.Command is null){Win32.AppendMenuW(menu,Win32.MF_SEPARATOR,0,null);continue;}
+                // "&" marks a mnemonic in menu text; names show it literally.
+                Win32.AppendMenuW(menu,Win32.MF_STRING|(item.Enabled?0:Win32.MF_GRAYED),TrayFirstItem+(uint)i,item.Text.Replace("&","&&",StringComparison.Ordinal));
+            }
+            if(items.Count>0)Win32.AppendMenuW(menu,Win32.MF_SEPARATOR,0,null);
+            Win32.AppendMenuW(menu,Win32.MF_STRING,TrayExit,"退出启动器");
+            // The menu closes on an outside click only while the window is foreground.
+            Win32.SetForegroundWindow(handle);
+            var command=(uint)Win32.TrackPopupMenuEx(menu,Win32.TPM_RIGHTBUTTON|Win32.TPM_NONOTIFY|Win32.TPM_RETURNCMD,x,y,handle,0);
+            Win32.PostMessageW(handle,Win32.WM_NULL,0,0);
+            if(command==TrayShow)ShowFromTray();
+            else if(command==TrayExit)ExitRequested?.Invoke();
+            else if(command>=TrayFirstItem&&command-TrayFirstItem<items.Count&&items[(int)(command-TrayFirstItem)].Command is {} chosen)
+                TrayCommand?.Invoke(chosen);
+        }
+        finally{Win32.DestroyMenu(menu);}
+    }
+
+    // Hides the window; the notification area icon brings it back.
+    public void HideToTray()
+    {
+        if(!trayAdded)AddTrayIcon();
+        if(!trayAdded){Minimize();return;}
+        Win32.ShowWindow(handle,Win32.SW_HIDE);
+    }
+
+    public void ShowFromTray()
+    {
+        Win32.ShowWindow(handle,Win32.IsIconic(handle)?Win32.SW_RESTORE:Win32.SW_SHOW);
+        Win32.SetForegroundWindow(handle);
+    }
+
+    // SW_HIDE / SW_SHOW: the WebView follows the window's visibility.
+    private void OnShowWindow(bool shown)
+    {
+        if(!shown){controller?.put_IsVisible(0);return;}
+        if(minimized)return;
+        controller?.put_IsVisible(1);
+        if(Win32.GetActiveWindow()==handle)Focus();
     }
 
     // Keeps DWM's shadow and rounded corners while the page draws its own
@@ -248,14 +368,17 @@ internal sealed unsafe class HostWindow
     public void Restore()
     {
         if(Win32.IsIconic(handle))Win32.ShowWindow(handle,Win32.SW_RESTORE);
+        else if(!Win32.IsWindowVisible(handle))Win32.ShowWindow(handle,Win32.SW_SHOW);
         Win32.SetForegroundWindow(handle);
     }
 
-    // After browser authorization: come back to the front, or flash the
-    // taskbar button when Windows does not allow taking the focus.
+    // After browser authorization: come back to the front (also from the
+    // notification area), or flash the taskbar button when Windows does not
+    // allow taking the focus.
     public void Attention()
     {
         if(Win32.IsIconic(handle))Win32.ShowWindow(handle,Win32.SW_RESTORE);
+        else if(!Win32.IsWindowVisible(handle))Win32.ShowWindow(handle,Win32.SW_SHOW);
         if(!Win32.SetForegroundWindow(handle))Win32.FlashWindow(handle,true);
     }
 
@@ -268,6 +391,7 @@ internal sealed unsafe class HostWindow
 
     public void Destroy()
     {
+        RemoveTrayIcon();
         controller?.Close();
         controller=null;webView=null;
         Win32.DestroyWindow(handle);
@@ -304,8 +428,20 @@ internal sealed unsafe class HostWindow
 
     private nint Process(nint window,uint message,nint wParam,nint lParam)
     {
+        if(taskbarCreated!=0&&message==taskbarCreated)
+        {
+            trayAdded=false;
+            AddTrayIcon();
+            return 0;
+        }
         switch(message)
         {
+            case TrayMessage:
+                OnTray(wParam,lParam);
+                return 0;
+            case Win32.WM_SHOWWINDOW when lParam==0:
+                OnShowWindow(wParam!=0);
+                break;
             case Win32.WM_NCCALCSIZE when wParam!=0:
                 return 0;
             case Win32.WM_NCHITTEST:
@@ -355,6 +491,12 @@ internal sealed unsafe class HostWindow
             return 0;
         }
     }
+}
+
+// A quick action of the notification area menu; Command null is a separator.
+internal sealed record TrayItem(string Text,string? Command,bool Enabled)
+{
+    public static readonly TrayItem Separator=new("",null,false);
 }
 
 internal sealed class WebViewUnavailableException(int result):Exception(Describe(result))

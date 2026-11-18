@@ -145,9 +145,11 @@ internal sealed record MomokoClientAuthorization(string DeviceCode,string UserCo
 internal sealed record MomokoClientTokenRequest(string DeviceCode);
 internal sealed record MomokoRefreshRequest(string RefreshToken);
 internal sealed record MomokoTokens(string? AccessToken,string? RefreshToken,long ExpiresIn);
-internal sealed record MomokoMe(string Id,string Username,string? Name,string? Email,string? Avatar);
+internal sealed record MomokoMe(string Id,string Username,string? Name,string? Email,bool EmailVerified,string? Avatar,
+    bool TotpEnabled,DateTimeOffset? CreateTime,DateTimeOffset? LastLoginAt);
 internal sealed record MomokoServerBrief(string Id,string Game,string? GameName,string Name,string? State,int Online,string? Theme,string? Cover);
-internal sealed record MomokoLink(string Id,string PlayerId,string? DisplayId,string? Account,string? Nickname,int Level,string? Method);
+internal sealed record MomokoLink(string Id,string PlayerId,string? DisplayId,string? Account,string? Nickname,int Level,string? Method,
+    DateTimeOffset? LinkedAt,DateTimeOffset? LastSeenAt);
 internal sealed record MomokoEndpoints(string Sdk,string Game,string Resource);
 // Icon and Background: links (object storage) of the game icon and the game
 // page background (image or video) uploaded for this server; empty when not set.

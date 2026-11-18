@@ -6,6 +6,9 @@ namespace Momoko.Launcher.Core;
 internal sealed class LauncherSettings
 {
     public string Theme { get; set; } = "system";
+    // Closing the window: "ask" (the close dialog), "tray" (hide to the
+    // notification area) or "exit".
+    public string CloseAction { get; set; } = "ask";
     public string DeviceId { get; set; } = "";
     public string? Selected { get; set; }
     public AccountProfile? Account { get; set; }
@@ -22,6 +25,7 @@ internal sealed class LauncherSettings
         }
         settings??=new LauncherSettings();
         if(settings.Theme is not ("system" or "light" or "dark"))settings.Theme="system";
+        if(settings.CloseAction is not ("ask" or "tray" or "exit"))settings.CloseAction="ask";
         if(string.IsNullOrEmpty(settings.DeviceId))settings.DeviceId=Guid.NewGuid().ToString("N");
         settings.Games??=new();
         settings.Developer??=new();
@@ -48,15 +52,24 @@ internal sealed class GameSettings
 {
     public string? Executable { get; set; }
     public bool Localization { get; set; }
+    // Games whose module supports it: the game window can be resized freely
+    // (gakumas: within the client's portrait/landscape aspect range).
+    public bool FreeResolution { get; set; } = true;
 }
 
-// Shown on the account chip while the passport is signed in.
+// Shown on the account chip and the passport card while the passport is
+// signed in (also offline, from this cache).
 internal sealed class AccountProfile
 {
     public string Id { get; set; } = "";
     public string Username { get; set; } = "";
     public string Name { get; set; } = "";
     public string Avatar { get; set; } = "";
+    public string Email { get; set; } = "";
+    public bool EmailVerified { get; set; }
+    public bool TotpEnabled { get; set; }
+    public DateTimeOffset? Joined { get; set; }
+    public DateTimeOffset? LastLogin { get; set; }
 }
 
 // Only the developer build reads or edits these.

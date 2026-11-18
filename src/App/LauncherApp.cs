@@ -48,6 +48,9 @@ internal sealed partial class LauncherApp
     private bool updateChecking;
     private string? updateError;
     private LauncherRelease? newerRelease;
+    private Version? updatePrompted;
+    private bool updateInstalling;
+    private int updateProgress=-1;
 
     // A browser authorization in progress (docs/login-protocol.md section 1.1).
     private sealed record ClientAuthorization(string DeviceCode,string UserCode,string VerificationUrl,int Interval,DateTime Expires);
@@ -72,6 +75,9 @@ internal sealed partial class LauncherApp
     {
         window.MessageReceived+=OnMessage;
         window.CloseRequested+=OnCloseRequested;
+        window.ExitRequested+=Exit;
+        window.TrayItems=TrayMenu;
+        window.TrayCommand+=OnTrayCommand;
         window.Failed+=message=>{LauncherLog.Error(message);Dialogs.Error(window.Handle,message);window.Destroy();};
         AttachDeveloperLog();
         foreach(var module in modules)WatchCleanup(module);
@@ -97,8 +103,17 @@ internal sealed partial class LauncherApp
                     break;
                 case "update.check":Run(()=>CheckUpdateAsync(true));break;
                 case "update.open":HostWindow.OpenExternal(newerRelease?.Page??UpdateClient.ReleasesPage);break;
+                case "update.install":Run(InstallUpdateAsync);break;
                 case "window.minimize":window.Minimize();break;
                 case "window.close":OnCloseRequested();break;
+                case "window.closeChoice":
+                {
+                    var action=Text(root,"action");
+                    var remember=root.TryGetProperty("remember",out var value)&&value.ValueKind==JsonValueKind.True;
+                    CloseWith(action,remember);
+                    break;
+                }
+                case "close.set":SetCloseAction(Text(root,"value"));break;
                 case "window.drag":window.BeginDrag();break;
                 case "theme.set":SetTheme(Text(root,"value"));break;
                 case "theme.system":if(settings.Theme=="system")window.SetBackground(root.TryGetProperty("dark",out var dark)&&dark.ValueKind==JsonValueKind.True);break;
@@ -110,6 +125,8 @@ internal sealed partial class LauncherApp
                 case "open.register":HostWindow.OpenExternal(momoko.PageUrl("/register"));break;
                 case "open.forgot":HostWindow.OpenExternal(momoko.PageUrl("/forgot"));break;
                 case "open.account":HostWindow.OpenExternal(momoko.PageUrl("/account"));break;
+                // The passport's game space for a server (passport web /games/{serverId}).
+                case "open.gameSpace":{var id=Text(root,"id");Guard(()=>HostWindow.OpenExternal(momoko.PageUrl("/games/"+Uri.EscapeDataString(Server(id).Server.Id))));break;}
                 case "open.logs":HostWindow.OpenFolder(AppPaths.Logs);break;
                 case "server.select":settings.Selected=Text(root,"id");SaveSettings();Publish();break;
                 case "server.refresh":Run(RefreshServersAsync);break;
@@ -119,6 +136,7 @@ internal sealed partial class LauncherApp
                 case "game.browse":Guard(()=>BrowseExecutable(Text(root,"game")));break;
                 case "game.localization":{var game=Text(root,"game");var enabled=root.TryGetProperty("enabled",out var value)&&value.ValueKind==JsonValueKind.True;Guard(()=>SetLocalization(game,enabled));break;}
                 case "game.importLocalization":{var game=Text(root,"game");Run(()=>ImportLocalizationAsync(game));break;}
+                case "game.freeResolution":{var game=Text(root,"game");var enabled=root.TryGetProperty("enabled",out var value)&&value.ValueKind==JsonValueKind.True;Guard(()=>SetFreeResolution(game,enabled));break;}
                 default:
                     if(!OnDeveloperMessage(type,root))LauncherLog.Warn("未知的界面消息："+type);
                     break;
@@ -149,8 +167,8 @@ internal sealed partial class LauncherApp
                 LauncherLog.Warn("通行证登录已失效："+momokoError.Message);
                 ForgetLogin();phase="login";loginError="登录已失效，请重新登录。";
                 break;
-            case MomokoException or MomokoUnavailableException or SdkException or InvalidDataException or InvalidOperationException
-                or FileNotFoundException or IOException or UnauthorizedAccessException or NotSupportedException:
+            case MomokoException or MomokoUnavailableException or SdkException or UpdateUnavailableException or InvalidDataException
+                or InvalidOperationException or FileNotFoundException or IOException or UnauthorizedAccessException or NotSupportedException:
                 LauncherLog.Error(error.Message);
                 break;
             default:
@@ -162,6 +180,8 @@ internal sealed partial class LauncherApp
     }
 
     private void Toast(string kind,string text)=>window.Post(JsonSerializer.Serialize(new UiToast("toast",kind,text),LauncherJson.Default.UiToast));
+
+    private void Signal(string type)=>window.Post(JsonSerializer.Serialize(new UiSignal(type),LauncherJson.Default.UiSignal));
 
     // ---------------------------------------------------------------- passport
 
@@ -314,7 +334,18 @@ internal sealed partial class LauncherApp
     private async Task LoadAccountAsync(CancellationToken cancellation)
     {
         var me=await momoko.MeAsync(await AccessAsync(cancellation),cancellation);
-        settings.Account=new AccountProfile{Id=me.Id,Username=me.Username,Name=string.IsNullOrWhiteSpace(me.Name)?me.Username:me.Name!,Avatar=me.Avatar??""};
+        settings.Account=new AccountProfile
+        {
+            Id=me.Id,
+            Username=me.Username,
+            Name=string.IsNullOrWhiteSpace(me.Name)?me.Username:me.Name!,
+            Avatar=me.Avatar??"",
+            Email=me.Email??"",
+            EmailVerified=me.EmailVerified,
+            TotpEnabled=me.TotpEnabled,
+            Joined=me.CreateTime,
+            LastLogin=me.LastLoginAt
+        };
         SaveSettings();
         await LoadServersAsync(cancellation);
     }
@@ -429,7 +460,7 @@ internal sealed partial class LauncherApp
             if(!startGame){run.Status="idle";run.AppId=null;SetDeveloperStatus("登录成功","");return;}
             var progress=new Progress<string>(line=>LauncherLog.Write($"[{module.Id}] {line}"));
             var launch=new GameLaunch(executable,endpoints,session,module.SupportsLocalization&&game.Localization,
-                LocalizationFont(),ClientConsole(),LaunchArguments());
+                LocalizationFont(),module.SupportsFreeResolution&&game.FreeResolution,ClientConsole(),LaunchArguments());
             var pid=await module.LaunchAsync(launch,progress,cancellation);
             run.Status="running";
             SetDeveloperStatus("游戏运行中",pid.ToString(CultureInfo.InvariantCulture));
@@ -502,12 +533,14 @@ internal sealed partial class LauncherApp
 
     // ---------------------------------------------------------------- updates
 
-    // The user build compares its version with the latest GitHub release once
-    // the page is ready, and again whenever the player asks. Only the user
-    // build is released; the developer build and local builds never check.
+    // The user build compares its version with the latest GitHub release when
+    // the page is ready, and again whenever the player asks. A newer release
+    // opens the update dialog: once per version after the automatic check,
+    // every time after a manual one. Only the user build is released; the
+    // developer build and local builds never check.
     private async Task CheckUpdateAsync(bool manual)
     {
-        if(updateChecking)return;
+        if(updateChecking||updateInstalling)return;
         if(!UpdateEnabled)
         {
             if(manual)Toast("info",Developer?"开发版不检查更新。":"本地构建没有版本号，不检查更新。");
@@ -519,10 +552,14 @@ internal sealed partial class LauncherApp
             var release=await updates.LatestAsync(CancellationToken.None);
             if(release.Version>UpdateClient.Current)
             {
-                var found=newerRelease?.Version!=release.Version;
+                if(newerRelease?.Version!=release.Version)
+                    LauncherLog.Write($"发现新版本 {release.Tag}（当前 {BuildInfo.Version}）：{release.Page}");
                 newerRelease=release;
-                if(found)LauncherLog.Write($"发现新版本 {release.Tag}（当前 {BuildInfo.Version}）：{release.Page}");
-                if(found||manual)Toast("info",$"发现新版本 {release.Tag}，可以前往 GitHub 下载。");
+                if(manual||updatePrompted!=release.Version)
+                {
+                    updatePrompted=release.Version;
+                    Signal("update.prompt");
+                }
             }
             else
             {
@@ -543,10 +580,51 @@ internal sealed partial class LauncherApp
         }
     }
 
+    // One click: download and check the release executable, put it in place
+    // of this one and restart (Services.UpdateClient). Not while a game runs
+    // or starts, so the restart never interrupts a launch.
+    private async Task InstallUpdateAsync()
+    {
+        if(updateInstalling)return;
+        var release=newerRelease??throw new InvalidOperationException("没有可安装的新版本。");
+        var asset=release.Asset??throw new InvalidOperationException("这个版本没有可自动安装的启动器文件，请前往 GitHub 下载。");
+        if(UpdateBlocked() is {} reason)throw new InvalidOperationException(reason);
+        updateInstalling=true;updateProgress=0;Publish();
+        try
+        {
+            LauncherLog.Write($"正在下载新版本 {release.Tag}：{asset.Url}");
+            var progress=new Progress<int>(percent=>{updateProgress=percent;Publish();});
+            var staged=await updates.DownloadAsync(asset,progress,CancellationToken.None);
+            if(UpdateBlocked() is {} late)
+            {
+                File.Delete(staged);
+                throw new InvalidOperationException(late);
+            }
+            UpdateClient.Install(staged);
+            LauncherLog.Ok($"新版本 {release.Tag} 已安装，正在重启启动器。");
+        }
+        catch
+        {
+            updateInstalling=false;updateProgress=-1;Publish();
+            throw;
+        }
+        try{UpdateClient.Restart();}
+        catch(Exception error) when(error is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            updateInstalling=false;updateProgress=-1;newerRelease=null;Publish();
+            throw new InvalidOperationException($"新版本 {release.Tag} 已安装，但无法自动重启（{error.Message}），请手动重新打开启动器。",error);
+        }
+        Shutdown();
+    }
+
+    private string? UpdateBlocked()=>operation is not null||runs.Values.Any(run=>run.Status!="idle")
+        ?"游戏正在启动、运行或清理，退出游戏后再更新。":null;
+
     private static bool UpdateEnabled=>!Developer&&UpdateClient.Current is not null;
 
     private UiUpdate UpdateState()=>new(BuildInfo.Version,UpdateEnabled,updateChecking,
-        newerRelease?.Tag,newerRelease?.Page,updateError);
+        newerRelease?.Tag,newerRelease?.Page,newerRelease?.Notes,newerRelease?.Asset is not null,
+        updateInstalling,updateProgress,UpdateBlocked(),updateError);
 
     // ---------------------------------------------------------------- settings
 
@@ -580,6 +658,18 @@ internal sealed partial class LauncherApp
         if(enabled&&module.Localization is null)throw new InvalidDataException("请先导入汉化包，再开启汉化。");
         settings.Game(module.Id).Localization=enabled;
         SaveSettings();
+        Publish();
+    }
+
+    // Read by the game hook at launch, so it changes only while the game is not running.
+    private void SetFreeResolution(string gameId,bool enabled)
+    {
+        var module=ModuleOf(gameId)??throw new InvalidOperationException("未知的游戏："+gameId);
+        if(!module.SupportsFreeResolution)return;
+        if(RunOf(module.Id).Status!="idle")throw new InvalidOperationException("游戏运行中不能更改自由分辨率，请先退出游戏。");
+        settings.Game(module.Id).FreeResolution=enabled;
+        SaveSettings();
+        LauncherLog.Write($"[{module.Id}] 自由分辨率：{(enabled?"开启":"关闭")}");
         Publish();
     }
 
@@ -618,7 +708,91 @@ internal sealed partial class LauncherApp
 
     // ---------------------------------------------------------------- window
 
+    // Closing the window (the page's close button, Alt+F4, the taskbar) does
+    // what the player chose: hide to the notification area, exit, or ask with
+    // the close dialog. The tray icon's menu always offers both.
     private void OnCloseRequested()
+    {
+        switch(settings.CloseAction)
+        {
+            case "tray":window.HideToTray();break;
+            case "exit":Exit();break;
+            default:
+                if(!window.Ready){Exit();break;}
+                window.Restore();
+                Signal("close.ask");
+                break;
+        }
+    }
+
+    private void CloseWith(string action,bool remember)
+    {
+        if(action is not ("tray" or "exit"))return;
+        if(remember)
+        {
+            settings.CloseAction=action;
+            SaveSettings();
+            Publish();
+        }
+        if(action=="tray")window.HideToTray();
+        else Exit();
+    }
+
+    private void SetCloseAction(string value)
+    {
+        if(value is not ("ask" or "tray" or "exit"))return;
+        settings.CloseAction=value;
+        SaveSettings();
+        Publish();
+    }
+
+    // Notification area quick actions: start each server's game ("game
+    // (server)", unavailable while it cannot start) and open the settings.
+    private IReadOnlyList<TrayItem> TrayMenu()
+    {
+        var items=new List<TrayItem>();
+        if(phase=="ready"&&apps.Length>0)
+        {
+            foreach(var server in apps)
+            {
+                var run=RunOf(ModuleOf(server.Server.Game)!.Id);
+                var text=$"启动 {TitleOf(server)} ({server.Server.Name})";
+                if(run.Status!="idle"&&run.AppId==server.AppId)text+=run.Status switch{"running"=>" · 运行中","cleaning"=>" · 清理中",_=>" · 启动中"};
+                items.Add(new TrayItem(text,"launch:"+server.AppId,CanLaunch(server)));
+            }
+            items.Add(TrayItem.Separator);
+        }
+        items.Add(new TrayItem("打开设置","settings",true));
+        return items;
+    }
+
+    private bool CanLaunch(MomokoLaunchApp server)=>operation is null&&RunOf(ModuleOf(server.Server.Game)!.Id).Status=="idle"&&
+        (server.Link is not null||DeveloperServerState(server)?.LoginMethod=="password");
+
+    private void OnTrayCommand(string command)
+    {
+        if(command=="settings")
+        {
+            window.ShowFromTray();
+            Signal("settings.open");
+            return;
+        }
+        if(!command.StartsWith("launch:",StringComparison.Ordinal))return;
+        var id=command["launch:".Length..];
+        settings.Selected=id;
+        SaveSettings();
+        Publish();
+        // Started from the tray, the window may be hidden: a failure brings it back to show why.
+        Run(async()=>
+        {
+            try{await LaunchAsync(id,true);}
+            catch{window.Attention();throw;}
+        });
+    }
+
+    // A game that is starting, running or being cleaned up keeps the launcher
+    // alive until its cleanup is done.
+    private void Exit()
     {
         if(operation is not null||runs.Values.Any(run=>run.Status!="idle"))
         {
@@ -648,14 +822,25 @@ internal sealed partial class LauncherApp
         if(!window.Ready)return;
         var profile=settings.Account;
         var account=profile is not null&&phase is "ready" or "offline"
-            ?new UiAccount(profile.Name,profile.Username,Initial(profile.Name),profile.Avatar):null;
+            ?new UiAccount(profile.Name,profile.Username,Initial(profile.Name),profile.Avatar,profile.Email,profile.EmailVerified,
+                profile.TotpEnabled,LocalDate(profile.Joined),LocalTime(profile.LastLogin)):null;
         var state=new UiState("state",Developer?"dev":"user",settings.Theme,phase,MomokoOrigin,account,
             new UiLogin(loginBusy,authorization?.UserCode,loginError),apps.Select(ServerState).ToArray(),settings.Selected,notice,
-            UpdateState(),DeveloperState());
+            UpdateState(),new UiWindow(settings.CloseAction),DeveloperState());
         window.Post(JsonSerializer.Serialize(state,LauncherJson.Default.UiState));
     }
 
+    // The game name Momoko reports for the server, the module id when unknown.
+    private string TitleOf(MomokoLaunchApp server)=>string.IsNullOrWhiteSpace(server.Server.GameName)?ModuleOf(server.Server.Game)!.Id:server.Server.GameName!;
+
     private static string Initial(string name)=>string.IsNullOrEmpty(name)?"?":char.ToUpperInvariant(name[0]).ToString();
+
+    // Momoko reports unset times as missing or as the Unix epoch.
+    private static string LocalDate(DateTimeOffset? value)=>value is {} time&&time.Year>1970
+        ?time.ToLocalTime().ToString("yyyy-MM-dd",CultureInfo.InvariantCulture):"";
+
+    private static string LocalTime(DateTimeOffset? value)=>value is {} time&&time.Year>1970
+        ?time.ToLocalTime().ToString("yyyy-MM-dd HH:mm",CultureInfo.InvariantCulture):"";
 
     private UiServer ServerState(MomokoLaunchApp server)
     {
@@ -675,11 +860,12 @@ internal sealed partial class LauncherApp
         }
         var link=server.Link;
         var background=MediaCache.Local(server.Background);
-        return new UiServer(server.AppId,server.Server.Name,module.Id,
-            string.IsNullOrWhiteSpace(server.Server.GameName)?module.Id:server.Server.GameName!,
+        return new UiServer(server.AppId,server.Server.Name,module.Id,TitleOf(server),
             MediaCache.Local(server.Icon)??"",background??"",MediaCache.IsVideo(background),server.Server.State,server.Server.Online,
-            link is null?null:new UiPlayer(link.PlayerId,link.DisplayId??"",link.Nickname??""),
+            link is null?null:new UiPlayer(link.PlayerId,link.DisplayId??"",link.Nickname??"",link.Account??"",link.Level,
+                link.Method??"",LocalDate(link.LinkedAt),LocalTime(link.LastSeenAt)),
             server.Bindable,server.BlockReason??"",status,new UiExecutable(executable,valid,module.ExecutableName),localization,
+            module.SupportsFreeResolution?game.FreeResolution:null,
             DeveloperEndpointsState(server),DeveloperServerState(server));
     }
 }

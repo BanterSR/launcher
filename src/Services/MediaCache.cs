@@ -13,8 +13,7 @@ namespace Momoko.Launcher.Services;
 internal sealed class MediaCache:IDisposable
 {
     public const string Host="media.momoko.example";
-    private const long MaxSize=200L<<20;
-    private static readonly string[] Extensions=[".jpg",".jpeg",".png",".webp",".gif",".mp4",".webm"];
+    private static readonly string[] VideoExtensions=[".mp4",".webm",".mov",".m4v",".mkv",".ogv",".avi"];
     private readonly HttpClient http=new(){Timeout=TimeSpan.FromMinutes(10)};
     private readonly SemaphoreSlim gate=new(1,1);
 
@@ -27,15 +26,15 @@ internal sealed class MediaCache:IDisposable
         return name is not null&&File.Exists(Path.Combine(AppPaths.Media,name))?$"https://{Host}/{name}":null;
     }
 
-    public static bool IsVideo(string? local)=>local is not null&&(local.EndsWith(".mp4",StringComparison.Ordinal)||local.EndsWith(".webm",StringComparison.Ordinal));
+    public static bool IsVideo(string? local)=>local is not null&&VideoExtensions.Contains(Path.GetExtension(local).ToLowerInvariant());
 
-    // <sha256 of the link>.<extension of the link path>; null for links the
-    // launcher does not show (not http(s), or not an image or video file).
+    // <sha256 of the link> plus the extension of the link path (kept so the
+    // page can tell videos from images); null for links that are not http(s).
     private static string? FileName(string? link)
     {
         if(string.IsNullOrEmpty(link)||!Uri.TryCreate(link,UriKind.Absolute,out var uri)||uri.Scheme is not ("https" or "http"))return null;
         var extension=Path.GetExtension(uri.AbsolutePath).ToLowerInvariant();
-        if(!Extensions.Contains(extension))return null;
+        if(extension.Length>17||extension.Skip(1).Any(c=>!char.IsAsciiLetterOrDigit(c)))extension="";
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(link)))+extension;
     }
 
@@ -50,7 +49,7 @@ internal sealed class MediaCache:IDisposable
             foreach(var link in links)
             {
                 var name=FileName(link);
-                if(name is null){if(!string.IsNullOrEmpty(link))LauncherLog.Warn("启动器图片 / 视频链接无效，已忽略："+link);continue;}
+                if(name is null){if(!string.IsNullOrEmpty(link))LauncherLog.Warn("启动器图片 / 视频链接不是 http(s)，已忽略："+link);continue;}
                 wanted[name]=link!;
             }
             foreach(var (name,link) in wanted)
@@ -62,7 +61,7 @@ internal sealed class MediaCache:IDisposable
                     await DownloadAsync(link,target,cancellation);
                     changed();
                 }
-                catch(Exception error) when(error is HttpRequestException or IOException or InvalidDataException
+                catch(Exception error) when(error is HttpRequestException or IOException
                     or TaskCanceledException&&!cancellation.IsCancellationRequested)
                 {
                     LauncherLog.Warn($"下载启动器图片 / 视频失败：{link}：{error.Message}");
@@ -86,23 +85,12 @@ internal sealed class MediaCache:IDisposable
     {
         using var response=await http.GetAsync(link,HttpCompletionOption.ResponseHeadersRead,cancellation);
         if(!response.IsSuccessStatusCode)throw new HttpRequestException($"HTTP {(int)response.StatusCode}");
-        if(response.Content.Headers.ContentLength>MaxSize)throw new InvalidDataException("文件超过 200 MB");
         var temporary=target+".download";
         try
         {
             await using(var source=await response.Content.ReadAsStreamAsync(cancellation))
             await using(var file=File.Create(temporary))
-            {
-                var buffer=new byte[81920];
-                long total=0;
-                int read;
-                while((read=await source.ReadAsync(buffer,cancellation))>0)
-                {
-                    total+=read;
-                    if(total>MaxSize)throw new InvalidDataException("文件超过 200 MB");
-                    await file.WriteAsync(buffer.AsMemory(0,read),cancellation);
-                }
-            }
+                await source.CopyToAsync(file,cancellation);
             File.Move(temporary,target,true);
         }
         finally{if(File.Exists(temporary))File.Delete(temporary);}

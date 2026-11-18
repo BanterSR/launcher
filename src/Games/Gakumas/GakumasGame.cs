@@ -14,6 +14,7 @@ internal sealed class GakumasGame:GameModule
     public override string ExecutableName=>"gakumas.exe";
     public override string DefaultExecutable=>@"D:\game\gakumas\gakumas.exe";
     public override bool SupportsLocalization=>true;
+    public override bool SupportsFreeResolution=>true;
     public override LocalizationInfo? Localization=>LocalizationPackage.Current();
 
     public override void ValidateExecutable(string path)

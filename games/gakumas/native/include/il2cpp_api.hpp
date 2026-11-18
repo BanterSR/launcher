@@ -20,7 +20,7 @@ struct MethodInfo { void* methodPointer; };
 
 // Il2CppTypeEnum values returned by type_get_type.
 enum TypeKind : int {
-    kTypeBoolean=0x02,kTypeInt32=0x08,kTypeUInt32=0x09,kTypeInt64=0x0a,kTypeUInt64=0x0b,
+    kTypeBoolean=0x02,kTypeInt32=0x08,kTypeUInt32=0x09,kTypeInt64=0x0a,kTypeUInt64=0x0b,kTypeSingle=0x0c,
     kTypeString=0x0e,kTypeValueType=0x11,kTypeClass=0x12,kTypeGenericInstance=0x15,kTypeArray=0x1d
 };
 constexpr int kFieldStatic=0x0010;
