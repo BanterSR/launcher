@@ -465,6 +465,9 @@ std::size_t mesh_size{},mesh_colors{};
 constexpr std::int64_t kQuadVertices=4;
 constexpr std::size_t kColorSize=4;
 constexpr std::size_t kColorAlpha=3;
+// Upper bound for a resolved TMP_CharacterInfo or TMP_MeshInfo size; a larger
+// value means the class size was not available.
+constexpr std::size_t kStructSizeLimit=4096;
 
 std::size_t ArrayLength(unity::Object* array) {
     std::uintptr_t length{};
@@ -944,15 +947,22 @@ void gakumas::PrepareLocalization(unity::Api& unity_api,unity::Domain* unity_dom
         character_material=StructOffset(character_info,"materialReferenceIndex");
         character_vertex=StructOffset(character_info,"vertexIndex");
         character_visible=StructOffset(character_info,"isVisible");
-        mesh_colors=StructOffset(Class("TMPro","TMP_MeshInfo"),"colors32");
+        const auto mesh_info=Class("TMPro","TMP_MeshInfo");
+        mesh_colors=StructOffset(mesh_info,"colors32");
         const auto character_array=api->class_from_type(api->field_get_type(info_characters));
         const auto mesh_array=api->class_from_type(api->field_get_type(info_meshes));
-        if(!character_array||!mesh_array)throw std::runtime_error("TMP_TextInfo array types unavailable");
-        character_size=static_cast<std::size_t>(api->class_array_element_size(character_array));
-        mesh_size=static_cast<std::size_t>(api->class_array_element_size(mesh_array));
+        if(!character_array||!mesh_array||api->class_get_element_class(character_array)!=character_info||api->class_get_element_class(mesh_array)!=mesh_info)
+            throw std::runtime_error("TMP_TextInfo array types unexpected");
+        // il2cpp_class_array_element_size takes the element class: the size one
+        // TMP_CharacterInfo or TMP_MeshInfo occupies inside its array.
+        character_size=static_cast<std::size_t>(api->class_array_element_size(character_info));
+        mesh_size=static_cast<std::size_t>(api->class_array_element_size(mesh_info));
         if(std::max({character_code+sizeof(wchar_t),character_material+sizeof(std::int32_t),character_vertex+sizeof(std::int32_t),character_visible+sizeof(bool)})>character_size||
-            mesh_colors+sizeof(void*)>mesh_size)
-            throw std::runtime_error("TMP character or mesh info layout unexpected");
+            mesh_colors+sizeof(void*)>mesh_size||character_size>kStructSizeLimit||mesh_size>kStructSizeLimit)
+            throw std::runtime_error("TMP character or mesh info layout unexpected: character size "+std::to_string(character_size)+
+                ", character "+std::to_string(character_code)+", materialReferenceIndex "+std::to_string(character_material)+
+                ", vertexIndex "+std::to_string(character_vertex)+", isVisible "+std::to_string(character_visible)+
+                "; mesh size "+std::to_string(mesh_size)+", colors32 "+std::to_string(mesh_colors));
         const auto merge=Method(Class("Google.Protobuf","MessageExtensions"),"MergeFrom",{"Google.Protobuf.IMessage","System.ReadOnlySpan"});
         const auto presenter=Class("Campus.Common","AdvPresenterBase");
         const auto load_async=Method(presenter,"_LoadAsync",{"System.String","System.Threading.CancellationToken","System.Boolean"});
